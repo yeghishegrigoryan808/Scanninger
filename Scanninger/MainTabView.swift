@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import PDFKit
 
 struct MainTabView: View {
     var body: some View {
@@ -747,6 +748,8 @@ struct InvoiceDetailView: View {
     @State private var errorMessage = ""
     @State private var showDeleteConfirmation = false
     @State private var showEditInvoice = false
+    @State private var showTemplateSelection = false
+    @State private var pdfURL: URL?
     
     private var formattedIssueDate: String {
         let formatter = DateFormatter()
@@ -808,13 +811,13 @@ struct InvoiceDetailView: View {
             }
             .padding()
             
-            // Share PDF Button
+            // Create PDF Button
             Button(action: {
-                sharePDF()
+                showTemplateSelection = true
             }) {
                 HStack {
-                    Image(systemName: "square.and.arrow.up")
-                    Text("Share PDF")
+                    Image(systemName: "doc.fill")
+                    Text("Create PDF")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -856,6 +859,17 @@ struct InvoiceDetailView: View {
         .sheet(isPresented: $showEditInvoice) {
             EditInvoiceView(invoice: invoice)
         }
+        .sheet(isPresented: $showTemplateSelection) {
+            TemplateSelectionView(invoice: invoice) { template in
+                createPDF(with: template)
+            }
+        }
+        .sheet(item: Binding(
+            get: { pdfURL.map { PDFPreviewItem(url: $0) } },
+            set: { pdfURL = $0?.url }
+        )) { item in
+            PDFPreviewView(pdfURL: item.url)
+        }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: [item.url])
         }
@@ -886,9 +900,9 @@ struct InvoiceDetailView: View {
         }
     }
     
-    private func sharePDF() {
+    private func createPDF(with template: PDFTemplate) {
         do {
-            let url = try generateInvoicePDF(invoice: invoice)
+            let url = try generateInvoicePDF(invoice: invoice, template: template)
             
             // Verify file exists and has content
             guard FileManager.default.fileExists(atPath: url.path) else {
@@ -905,7 +919,7 @@ struct InvoiceDetailView: View {
                 return
             }
             
-            shareItem = ShareItem(url: url)
+            pdfURL = url
         } catch {
             errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
             showErrorAlert = true
@@ -929,8 +943,105 @@ struct DetailRow: View {
     }
 }
 
+// MARK: - PDF Template
+enum PDFTemplate: String, CaseIterable {
+    case classic = "Classic"
+    case modern = "Modern"
+    case minimal = "Minimal"
+}
+
+// MARK: - PDF Preview Item
+struct PDFPreviewItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+// MARK: - Template Selection View
+struct TemplateSelectionView: View {
+    @Environment(\.dismiss) var dismiss
+    let invoice: InvoiceModel
+    let onSelect: (PDFTemplate) -> Void
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(PDFTemplate.allCases, id: \.self) { template in
+                    Button(action: {
+                        onSelect(template)
+                        dismiss()
+                    }) {
+                        HStack {
+                            Text(template.rawValue)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Select Template")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - PDF Preview View
+struct PDFPreviewView: View {
+    let pdfURL: URL
+    @State private var shareItem: ShareItem?
+    
+    var body: some View {
+        NavigationStack {
+            PDFKitView(url: pdfURL)
+                .navigationTitle("PDF Preview")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            shareItem = ShareItem(url: pdfURL)
+                        }) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                }
+                .sheet(item: $shareItem) { item in
+                    ShareSheet(items: [item.url])
+                }
+        }
+    }
+}
+
+// MARK: - PDFKit View Wrapper
+struct PDFKitView: UIViewRepresentable {
+    let url: URL
+    
+    func makeUIView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        
+        if let document = PDFDocument(url: url) {
+            pdfView.document = document
+        }
+        
+        return pdfView
+    }
+    
+    func updateUIView(_ pdfView: PDFView, context: Context) {
+        // No updates needed
+    }
+}
+
 // MARK: - PDF Generation
-func generateInvoicePDF(invoice: InvoiceModel) throws -> URL {
+func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> URL {
     let pageSize = CGSize(width: 612, height: 792) // US Letter size
     let margin: CGFloat = 50
     let contentWidth = pageSize.width - (margin * 2)
@@ -939,6 +1050,30 @@ func generateInvoicePDF(invoice: InvoiceModel) throws -> URL {
     
     let fileName = "Invoice_\(invoice.number.replacingOccurrences(of: " ", with: "_")).pdf"
     let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+    
+    // Template-specific styling
+    let headerFontSize: CGFloat
+    let titleFontSize: CGFloat
+    let bodyFontSize: CGFloat
+    let spacing: CGFloat
+    
+    switch template {
+    case .classic:
+        headerFontSize = 20
+        titleFontSize = 28
+        bodyFontSize = 12
+        spacing = 20
+    case .modern:
+        headerFontSize = 16
+        titleFontSize = 32
+        bodyFontSize = 11
+        spacing = 16
+    case .minimal:
+        headerFontSize = 14
+        titleFontSize = 20
+        bodyFontSize = 10
+        spacing = 12
+    }
     
     let data = renderer.pdfData { context in
         context.beginPage()
@@ -963,43 +1098,44 @@ func generateInvoicePDF(invoice: InvoiceModel) throws -> URL {
         
         // Top section: Business info (left) and "INVOICE" (right)
         if let business = invoice.business {
-            drawText(business.name, at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: 18))
+            drawText(business.name, at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: headerFontSize))
+            let lineHeight = headerFontSize + 4
             if !business.address.isEmpty {
-                drawText(business.address, at: CGPoint(x: margin, y: yPosition + 22), font: .systemFont(ofSize: 12))
+                drawText(business.address, at: CGPoint(x: margin, y: yPosition + lineHeight), font: .systemFont(ofSize: bodyFontSize))
             }
             if !business.phone.isEmpty {
-                drawText(business.phone, at: CGPoint(x: margin, y: yPosition + 38), font: .systemFont(ofSize: 12))
+                drawText(business.phone, at: CGPoint(x: margin, y: yPosition + lineHeight * 2), font: .systemFont(ofSize: bodyFontSize))
             }
             if !business.email.isEmpty {
-                drawText(business.email, at: CGPoint(x: margin, y: yPosition + 54), font: .systemFont(ofSize: 12))
+                drawText(business.email, at: CGPoint(x: margin, y: yPosition + lineHeight * 3), font: .systemFont(ofSize: bodyFontSize))
             }
         }
         
-        drawText("INVOICE", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: 24), alignment: .right)
-        yPosition += 80
+        drawText("INVOICE", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: titleFontSize), alignment: .right)
+        yPosition += spacing * 4
         
         // Invoice details
-        let detailFont = UIFont.systemFont(ofSize: 12)
+        let detailFont = UIFont.systemFont(ofSize: bodyFontSize)
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .medium
         
         drawText("Invoice Number: \(invoice.number)", at: CGPoint(x: margin, y: yPosition), font: detailFont)
-        yPosition += 20
+        yPosition += spacing
         
         drawText("Issue Date: \(dateFormatter.string(from: invoice.issueDate))", at: CGPoint(x: margin, y: yPosition), font: detailFont)
-        yPosition += 20
+        yPosition += spacing
         
         drawText("Due Date: \(dateFormatter.string(from: invoice.dueDate))", at: CGPoint(x: margin, y: yPosition), font: detailFont)
-        yPosition += 30
+        yPosition += spacing * 1.5
         
         // Bill To section
-        drawText("Bill To:", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: 14))
-        yPosition += 20
+        drawText("Bill To:", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize + 2))
+        yPosition += spacing
         drawText(invoice.clientName, at: CGPoint(x: margin, y: yPosition), font: detailFont)
-        yPosition += 40
+        yPosition += spacing * 2
         
         // Items table header
-        let headerFont = UIFont.boldSystemFont(ofSize: 12)
+        let headerFont = UIFont.boldSystemFont(ofSize: bodyFontSize)
         let itemColumnWidth = contentWidth * 0.4
         let qtyColumnWidth = contentWidth * 0.15
         let priceColumnWidth = contentWidth * 0.2
@@ -1009,7 +1145,7 @@ func generateInvoicePDF(invoice: InvoiceModel) throws -> URL {
         drawText("Qty", at: CGPoint(x: margin + itemColumnWidth, y: yPosition), font: headerFont, width: qtyColumnWidth)
         drawText("Price", at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth, y: yPosition), font: headerFont, width: priceColumnWidth)
         drawText("Total", at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth + priceColumnWidth, y: yPosition), font: headerFont, width: totalColumnWidth)
-        yPosition += 25
+        yPosition += spacing + 5
         
         // Draw line under header
         context.cgContext.move(to: CGPoint(x: margin, y: yPosition))
@@ -1025,10 +1161,10 @@ func generateInvoicePDF(invoice: InvoiceModel) throws -> URL {
             drawText("\(item.qty)", at: CGPoint(x: margin + itemColumnWidth, y: yPosition), font: detailFont, width: qtyColumnWidth)
             drawText(String(format: "$%.2f", item.price), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth, y: yPosition), font: detailFont, width: priceColumnWidth)
             drawText(String(format: "$%.2f", itemTotal), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth + priceColumnWidth, y: yPosition), font: detailFont, width: totalColumnWidth)
-            yPosition += 20
+            yPosition += spacing
         }
         
-        yPosition += 20
+        yPosition += spacing
         
         // Totals section
         let totalsY = yPosition
@@ -1039,19 +1175,19 @@ func generateInvoicePDF(invoice: InvoiceModel) throws -> URL {
         
         drawText("Subtotal:", at: CGPoint(x: totalsStartX, y: totalsY), font: detailFont, alignment: .right, width: labelWidth)
         drawText(String(format: "$%.2f", invoice.subtotal), at: CGPoint(x: totalsStartX + labelWidth, y: totalsY), font: detailFont, alignment: .right, width: valueWidth)
-        yPosition += 20
+        yPosition += spacing
         
         drawText("Tax (\(String(format: "%.1f", invoice.taxPercent))%):", at: CGPoint(x: totalsStartX, y: yPosition), font: detailFont, alignment: .right, width: labelWidth)
         let taxAmount = invoice.subtotal * (invoice.taxPercent / 100.0)
         drawText(String(format: "$%.2f", taxAmount), at: CGPoint(x: totalsStartX + labelWidth, y: yPosition), font: detailFont, alignment: .right, width: valueWidth)
-        yPosition += 20
+        yPosition += spacing
         
-        drawText("Total:", at: CGPoint(x: totalsStartX, y: yPosition), font: .boldSystemFont(ofSize: 14), alignment: .right, width: labelWidth)
-        drawText(String(format: "$%.2f", invoice.total), at: CGPoint(x: totalsStartX + labelWidth, y: yPosition), font: .boldSystemFont(ofSize: 14), alignment: .right, width: valueWidth)
-        yPosition += 30
+        drawText("Total:", at: CGPoint(x: totalsStartX, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize + 2), alignment: .right, width: labelWidth)
+        drawText(String(format: "$%.2f", invoice.total), at: CGPoint(x: totalsStartX + labelWidth, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize + 2), alignment: .right, width: valueWidth)
+        yPosition += spacing * 1.5
         
         // Status
-        drawText("Status: \(invoice.status.rawValue)", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: 12))
+        drawText("Status: \(invoice.status.rawValue)", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize))
     }
     
     // Remove existing file if it exists
