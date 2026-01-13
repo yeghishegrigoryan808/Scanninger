@@ -192,10 +192,13 @@ struct InvoicesView: View {
                 }
                 
                 // Invoices list
-                List(filteredInvoices) { invoice in
-                    NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
-                        InvoiceRow(invoice: invoice)
+                List {
+                    ForEach(filteredInvoices) { invoice in
+                        NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
+                            InvoiceRow(invoice: invoice)
+                        }
                     }
+                    .onDelete(perform: deleteInvoices)
                 }
                 .listStyle(.plain)
             }
@@ -228,6 +231,20 @@ struct InvoicesView: View {
         
         let nextNumber = maxNumber + 1
         return String(format: "INV-%04d", nextNumber)
+    }
+    
+    private func deleteInvoices(offsets: IndexSet) {
+        withAnimation {
+            for index in offsets {
+                modelContext.delete(filteredInvoices[index])
+            }
+        }
+        
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to delete invoice: \(error)")
+        }
     }
 }
 
@@ -488,6 +505,188 @@ struct CreateInvoiceView: View {
     }
 }
 
+// MARK: - Edit Invoice View
+struct EditInvoiceView: View {
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
+    
+    let invoice: InvoiceModel
+    
+    @State private var selectedBusiness: BusinessProfileModel?
+    @State private var clientName = ""
+    @State private var invoiceNumber = ""
+    @State private var issueDate = Date()
+    @State private var dueDate = Date()
+    @State private var lineItems: [LineItemData] = []
+    @State private var taxPercent: Double = 0.0
+    @State private var showCreateBusinessProfile = false
+    
+    private var subtotal: Double {
+        lineItems.reduce(0) { $0 + (Double($1.qty) * $1.price) }
+    }
+    
+    private var taxAmount: Double {
+        subtotal * (taxPercent / 100.0)
+    }
+    
+    private var total: Double {
+        subtotal + taxAmount
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Business") {
+                    if businessProfiles.isEmpty {
+                        VStack(spacing: 12) {
+                            Text("No business profiles found. Please create one to continue.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                            
+                            Button("Add Business Profile") {
+                                showCreateBusinessProfile = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                    } else {
+                        Picker("Business Profile", selection: $selectedBusiness) {
+                            Text("Select Business").tag(nil as BusinessProfileModel?)
+                            ForEach(businessProfiles) { profile in
+                                Text(profile.name).tag(profile as BusinessProfileModel?)
+                            }
+                        }
+                    }
+                }
+                
+                Section("Invoice Information") {
+                    TextField("Client Name", text: $clientName)
+                    TextField("Invoice Number", text: $invoiceNumber)
+                    DatePicker("Issue Date", selection: $issueDate, displayedComponents: .date)
+                    DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
+                }
+                
+                Section("Line Items") {
+                    ForEach($lineItems) { $item in
+                        LineItemRow(item: $item)
+                    }
+                    
+                    Button(action: {
+                        lineItems.append(LineItemData(title: "", qty: 1, price: 0.0))
+                    }) {
+                        Label("Add Item", systemImage: "plus.circle")
+                    }
+                }
+                
+                Section("Totals") {
+                    HStack {
+                        Text("Subtotal")
+                        Spacer()
+                        Text(String(format: "$%.2f", subtotal))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Tax %")
+                        Spacer()
+                        TextField("0.0", value: $taxPercent, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                    }
+                    
+                    HStack {
+                        Text("Total")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text(String(format: "$%.2f", total))
+                            .fontWeight(.semibold)
+                    }
+                }
+            }
+            .navigationTitle("Edit Invoice")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        saveInvoice()
+                    }
+                    .disabled(!isValid)
+                }
+            }
+            .onAppear {
+                loadInvoiceData()
+            }
+            .sheet(isPresented: $showCreateBusinessProfile) {
+                CreateBusinessProfileView()
+            }
+        }
+    }
+    
+    private var isValid: Bool {
+        selectedBusiness != nil &&
+        !clientName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
+        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 && $0.price > 0 }
+    }
+    
+    private func loadInvoiceData() {
+        selectedBusiness = invoice.business
+        clientName = invoice.clientName
+        invoiceNumber = invoice.number
+        issueDate = invoice.issueDate
+        dueDate = invoice.dueDate
+        taxPercent = invoice.taxPercent
+        
+        // Load line items
+        if let items = invoice.items {
+            lineItems = items.map { item in
+                LineItemData(title: item.title, qty: item.qty, price: item.price)
+            }
+        } else {
+            lineItems = [LineItemData(title: "", qty: 1, price: 0.0)]
+        }
+    }
+    
+    private func saveInvoice() {
+        // Delete old line items
+        if let oldItems = invoice.items {
+            for item in oldItems {
+                modelContext.delete(item)
+            }
+        }
+        
+        // Create new line items
+        let newLineItems = lineItems.map { item in
+            LineItemModel(title: item.title, qty: item.qty, price: item.price)
+        }
+        
+        // Update invoice properties
+        invoice.business = selectedBusiness
+        invoice.clientName = clientName
+        invoice.number = invoiceNumber
+        invoice.issueDate = issueDate
+        invoice.dueDate = dueDate
+        invoice.taxPercent = taxPercent
+        invoice.items = newLineItems
+        
+        do {
+            try modelContext.save()
+            dismiss()
+        } catch {
+            print("Failed to update invoice: \(error)")
+        }
+    }
+}
+
 // MARK: - Line Item Data (temporary struct for form)
 struct LineItemData: Identifiable {
     let id = UUID()
@@ -540,9 +739,14 @@ struct LineItemRow: View {
 struct InvoiceDetailView: View {
     let invoice: InvoiceModel
     
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    
     @State private var shareItem: ShareItem?
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
+    @State private var showDeleteConfirmation = false
+    @State private var showEditInvoice = false
     
     private var formattedIssueDate: String {
         let formatter = DateFormatter()
@@ -621,10 +825,37 @@ struct InvoiceDetailView: View {
             .padding(.horizontal)
             .padding(.top, 8)
             
+            // Delete Invoice Button
+            Button(action: {
+                showDeleteConfirmation = true
+            }) {
+                HStack {
+                    Image(systemName: "trash")
+                    Text("Delete Invoice")
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.red)
+                .foregroundColor(.white)
+                .cornerRadius(10)
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+            
             Spacer()
         }
         .navigationTitle("Invoice")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Edit") {
+                    showEditInvoice = true
+                }
+            }
+        }
+        .sheet(isPresented: $showEditInvoice) {
+            EditInvoiceView(invoice: invoice)
+        }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: [item.url])
         }
@@ -632,6 +863,26 @@ struct InvoiceDetailView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(errorMessage)
+        }
+        .alert("Delete Invoice", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                deleteInvoice()
+            }
+        } message: {
+            Text("Are you sure you want to delete this invoice? This action cannot be undone.")
+        }
+    }
+    
+    private func deleteInvoice() {
+        modelContext.delete(invoice)
+        
+        do {
+            try modelContext.save()
+            dismiss()
+        } catch {
+            errorMessage = "Failed to delete invoice: \(error.localizedDescription)"
+            showErrorAlert = true
         }
     }
     
