@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import UIKit
 import PDFKit
+import PhotosUI
 
 struct MainTabView: View {
     var body: some View {
@@ -58,14 +59,16 @@ final class BusinessProfileModel {
     var email: String
     var createdAt: Date
     var updatedAt: Date
+    var logoData: Data?
     
-    init(name: String, address: String, phone: String, email: String, createdAt: Date = Date(), updatedAt: Date = Date()) {
+    init(name: String, address: String, phone: String, email: String, createdAt: Date = Date(), updatedAt: Date = Date(), logoData: Data? = nil) {
         self.name = name
         self.address = address
         self.phone = phone
         self.email = email
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.logoData = logoData
     }
 }
 
@@ -1097,22 +1100,66 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         }
         
         // Top section: Business info (left) and "INVOICE" (right)
+        var businessInfoX: CGFloat = margin
+        var businessInfoY: CGFloat = yPosition
+        var headerHeight: CGFloat = 0
+        
+        // Draw "INVOICE" title at top right
+        drawText("INVOICE", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: titleFontSize), alignment: .right)
+        
         if let business = invoice.business {
-            drawText(business.name, at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: headerFontSize))
             let lineHeight = headerFontSize + 4
+            var logoHeight: CGFloat = 0
+            
+            // Draw logo if exists
+            if let logoData = business.logoData, let logoImage = UIImage(data: logoData) {
+                let maxLogoSize: CGFloat = 80
+                let aspectRatio = logoImage.size.width / logoImage.size.height
+                let logoWidth: CGFloat
+                let logoHeightCalculated: CGFloat
+                
+                if aspectRatio > 1 {
+                    // Landscape
+                    logoWidth = maxLogoSize
+                    logoHeightCalculated = maxLogoSize / aspectRatio
+                } else {
+                    // Portrait or square
+                    logoWidth = maxLogoSize * aspectRatio
+                    logoHeightCalculated = maxLogoSize
+                }
+                
+                logoHeight = logoHeightCalculated
+                let logoRect = CGRect(x: margin, y: yPosition, width: logoWidth, height: logoHeight)
+                logoImage.draw(in: logoRect)
+                
+                // Position business info next to logo
+                businessInfoX = margin + logoWidth + 15
+                businessInfoY = yPosition
+            }
+            
+            // Calculate text height
+            var textLines = 1 // business name
+            if !business.address.isEmpty { textLines += 1 }
+            if !business.phone.isEmpty { textLines += 1 }
+            if !business.email.isEmpty { textLines += 1 }
+            let textHeight = headerFontSize + CGFloat(textLines - 1) * lineHeight
+            
+            // Draw business info
+            drawText(business.name, at: CGPoint(x: businessInfoX, y: businessInfoY), font: .boldSystemFont(ofSize: headerFontSize), width: contentWidth - (businessInfoX - margin))
             if !business.address.isEmpty {
-                drawText(business.address, at: CGPoint(x: margin, y: yPosition + lineHeight), font: .systemFont(ofSize: bodyFontSize))
+                drawText(business.address, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
             if !business.phone.isEmpty {
-                drawText(business.phone, at: CGPoint(x: margin, y: yPosition + lineHeight * 2), font: .systemFont(ofSize: bodyFontSize))
+                drawText(business.phone, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 2), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
             if !business.email.isEmpty {
-                drawText(business.email, at: CGPoint(x: margin, y: yPosition + lineHeight * 3), font: .systemFont(ofSize: bodyFontSize))
+                drawText(business.email, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 3), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
+            
+            headerHeight = max(logoHeight, textHeight)
         }
         
-        drawText("INVOICE", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: titleFontSize), alignment: .right)
-        yPosition += spacing * 4
+        yPosition += headerHeight + spacing
         
         // Invoice details
         let detailFont = UIFont.systemFont(ofSize: bodyFontSize)
@@ -1246,10 +1293,47 @@ struct CreateBusinessProfileView: View {
     @State private var address = ""
     @State private var phone = ""
     @State private var email = ""
+    @State private var logoData: Data?
+    @State private var selectedPhoto: PhotosPickerItem?
     
     var body: some View {
         NavigationStack {
             Form {
+                Section("Logo") {
+                    if let logoData = logoData, let uiImage = UIImage(data: logoData) {
+                        HStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 80, height: 80)
+                                .cornerRadius(8)
+                            
+                            Spacer()
+                            
+                            Button("Remove Logo") {
+                                self.logoData = nil
+                                selectedPhoto = nil
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                    
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label("Choose Logo", systemImage: "photo")
+                    }
+                    .onChange(of: selectedPhoto) { oldValue, newValue in
+                        Task {
+                            if let newValue = newValue {
+                                if let data = try? await newValue.loadTransferable(type: Data.self) {
+                                    if let uiImage = UIImage(data: data) {
+                                        logoData = uiImage.jpegData(compressionQuality: 0.8)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 Section("Business Information") {
                     TextField("Business Name", text: $name)
                     TextField("Address", text: $address)
@@ -1289,7 +1373,8 @@ struct CreateBusinessProfileView: View {
             phone: phone,
             email: email,
             createdAt: Date(),
-            updatedAt: Date()
+            updatedAt: Date(),
+            logoData: logoData
         )
         
         modelContext.insert(business)
@@ -1314,6 +1399,8 @@ struct EditBusinessProfileView: View {
     @State private var address: String
     @State private var phone: String
     @State private var email: String
+    @State private var logoData: Data?
+    @State private var selectedPhoto: PhotosPickerItem?
     
     init(business: BusinessProfileModel) {
         self.business = business
@@ -1321,11 +1408,47 @@ struct EditBusinessProfileView: View {
         _address = State(initialValue: business.address)
         _phone = State(initialValue: business.phone)
         _email = State(initialValue: business.email)
+        _logoData = State(initialValue: business.logoData)
     }
     
     var body: some View {
         NavigationStack {
             Form {
+                Section("Logo") {
+                    if let logoData = logoData, let uiImage = UIImage(data: logoData) {
+                        HStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 80, height: 80)
+                                .cornerRadius(8)
+                            
+                            Spacer()
+                            
+                            Button("Remove Logo") {
+                                self.logoData = nil
+                                selectedPhoto = nil
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                    
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label("Choose Logo", systemImage: "photo")
+                    }
+                    .onChange(of: selectedPhoto) { oldValue, newValue in
+                        Task {
+                            if let newValue = newValue {
+                                if let data = try? await newValue.loadTransferable(type: Data.self) {
+                                    if let uiImage = UIImage(data: data) {
+                                        logoData = uiImage.jpegData(compressionQuality: 0.8)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 Section("Business Information") {
                     TextField("Business Name", text: $name)
                     TextField("Address", text: $address)
@@ -1357,6 +1480,7 @@ struct EditBusinessProfileView: View {
         business.address = address
         business.phone = phone
         business.email = email
+        business.logoData = logoData
         business.updatedAt = Date()
         
         do {
