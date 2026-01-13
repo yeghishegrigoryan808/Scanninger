@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct MainTabView: View {
     var body: some View {
@@ -38,55 +39,86 @@ struct MainTabView: View {
     }
 }
 
+// MARK: - Invoice Status Enum
+enum InvoiceStatus: String, CaseIterable {
+    case draft = "Draft"
+    case sent = "Sent"
+    case paid = "Paid"
+    case overdue = "Overdue"
+}
+
 // MARK: - Invoice Model
-struct Invoice: Identifiable, Hashable {
-    let id = UUID()
-    let number: String
-    let clientName: String
-    let totalAmount: Double
-    let status: InvoiceStatus
-    let date: Date
+@Model
+final class InvoiceModel {
+    var number: String
+    var clientName: String
+    var statusRaw: String
+    var issueDate: Date
+    var dueDate: Date
+    var taxPercent: Double
+    var createdAt: Date
     
-    enum InvoiceStatus: String, CaseIterable {
-        case draft = "Draft"
-        case sent = "Sent"
-        case paid = "Paid"
-        case overdue = "Overdue"
+    @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
+    
+    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, items: [LineItemModel]? = nil) {
+        self.number = number
+        self.clientName = clientName
+        self.statusRaw = statusRaw
+        self.issueDate = issueDate
+        self.dueDate = dueDate
+        self.taxPercent = taxPercent
+        self.createdAt = createdAt
+        self.items = items
+    }
+    
+    var status: InvoiceStatus {
+        get {
+            InvoiceStatus(rawValue: statusRaw) ?? .draft
+        }
+        set {
+            statusRaw = newValue.rawValue
+        }
+    }
+    
+    var subtotal: Double {
+        (items ?? []).reduce(0) { $0 + $1.total }
+    }
+    
+    var total: Double {
+        subtotal + (subtotal * (taxPercent / 100.0))
     }
 }
 
 // MARK: - Line Item Model
-struct LineItem: Identifiable {
-    let id = UUID()
-    var description: String
-    var quantity: Int
+@Model
+final class LineItemModel {
+    var title: String
+    var qty: Int
     var price: Double
     
+    init(title: String, qty: Int, price: Double) {
+        self.title = title
+        self.qty = qty
+        self.price = price
+    }
+    
     var total: Double {
-        Double(quantity) * price
+        Double(qty) * price
     }
 }
 
 // MARK: - InvoicesView
 struct InvoicesView: View {
+    @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
+    @Environment(\.modelContext) private var modelContext
+    
     @State private var searchText = ""
-    @State private var selectedStatus: Invoice.InvoiceStatus? = nil
+    @State private var selectedStatus: InvoiceStatus? = nil
     @State private var showCreateInvoice = false
-    @State private var selectedInvoice: Invoice?
+    @State private var selectedInvoice: InvoiceModel?
     
-    // Invoices stored in state
-    @State private var invoices: [Invoice] = [
-        Invoice(number: "INV-0001", clientName: "Acme Corp", totalAmount: 1200.00, status: .paid, date: Date().addingTimeInterval(-86400 * 5)),
-        Invoice(number: "INV-0002", clientName: "Tech Solutions", totalAmount: 850.50, status: .sent, date: Date().addingTimeInterval(-86400 * 3)),
-        Invoice(number: "INV-0003", clientName: "Global Industries", totalAmount: 2450.75, status: .draft, date: Date().addingTimeInterval(-86400 * 1)),
-        Invoice(number: "INV-0004", clientName: "Digital Services", totalAmount: 650.00, status: .overdue, date: Date().addingTimeInterval(-86400 * 10)),
-        Invoice(number: "INV-0005", clientName: "Acme Corp", totalAmount: 320.25, status: .paid, date: Date().addingTimeInterval(-86400 * 7)),
-        Invoice(number: "INV-0006", clientName: "Startup Inc", totalAmount: 1500.00, status: .sent, date: Date().addingTimeInterval(-86400 * 2)),
-        Invoice(number: "INV-0007", clientName: "Tech Solutions", totalAmount: 980.00, status: .draft, date: Date())
-    ]
-    
-    private var filteredInvoices: [Invoice] {
-        var filtered = invoices
+    private var filteredInvoices: [InvoiceModel] {
+        var filtered = allInvoices
         
         // Filter by status
         if let selectedStatus = selectedStatus {
@@ -122,7 +154,7 @@ struct InvoicesView: View {
                             selectedStatus = nil
                         }
                         
-                        ForEach(Invoice.InvoiceStatus.allCases, id: \.self) { status in
+                        ForEach(InvoiceStatus.allCases, id: \.self) { status in
                             FilterButton(
                                 title: status.rawValue,
                                 isSelected: selectedStatus == status
@@ -137,11 +169,9 @@ struct InvoicesView: View {
                 
                 // Invoices list
                 List(filteredInvoices) { invoice in
-                    InvoiceRow(invoice: invoice)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedInvoice = invoice
-                        }
+                    NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
+                        InvoiceRow(invoice: invoice)
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -157,20 +187,14 @@ struct InvoicesView: View {
             }
             .sheet(isPresented: $showCreateInvoice) {
                 CreateInvoiceView(
-                    nextInvoiceNumber: generateNextInvoiceNumber(),
-                    onSave: { invoice in
-                        invoices.append(invoice)
-                    }
+                    nextInvoiceNumber: generateNextInvoiceNumber()
                 )
-            }
-            .navigationDestination(item: $selectedInvoice) { invoice in
-                InvoiceDetailView(invoice: invoice)
             }
         }
     }
     
     private func generateNextInvoiceNumber() -> String {
-        let maxNumber = invoices.compactMap { invoice -> Int? in
+        let maxNumber = allInvoices.compactMap { invoice -> Int? in
             let components = invoice.number.components(separatedBy: "-")
             if components.count == 2, let number = Int(components[1]) {
                 return number
@@ -221,7 +245,7 @@ struct FilterButton: View {
 
 // MARK: - Invoice Row
 struct InvoiceRow: View {
-    let invoice: Invoice
+    let invoice: InvoiceModel
     
     private var statusColor: Color {
         switch invoice.status {
@@ -235,11 +259,11 @@ struct InvoiceRow: View {
     private var formattedDate: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
-        return formatter.string(from: invoice.date)
+        return formatter.string(from: invoice.issueDate)
     }
     
     private var formattedAmount: String {
-        String(format: "$%.2f", invoice.totalAmount)
+        String(format: "$%.2f", invoice.total)
     }
     
     var body: some View {
@@ -282,19 +306,19 @@ struct InvoiceRow: View {
 // MARK: - Create Invoice View
 struct CreateInvoiceView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
     
     let nextInvoiceNumber: String
-    let onSave: (Invoice) -> Void
     
     @State private var clientName = ""
     @State private var invoiceNumber = ""
     @State private var issueDate = Date()
     @State private var dueDate = Date()
-    @State private var lineItems: [LineItem] = [LineItem(description: "", quantity: 1, price: 0.0)]
+    @State private var lineItems: [LineItemData] = [LineItemData(title: "", qty: 1, price: 0.0)]
     @State private var taxPercent: Double = 0.0
     
     private var subtotal: Double {
-        lineItems.reduce(0) { $0 + $1.total }
+        lineItems.reduce(0) { $0 + (Double($1.qty) * $1.price) }
     }
     
     private var taxAmount: Double {
@@ -321,7 +345,7 @@ struct CreateInvoiceView: View {
                     }
                     
                     Button(action: {
-                        lineItems.append(LineItem(description: "", quantity: 1, price: 0.0))
+                        lineItems.append(LineItemData(title: "", qty: 1, price: 0.0))
                     }) {
                         Label("Add Item", systemImage: "plus.circle")
                     }
@@ -377,34 +401,60 @@ struct CreateInvoiceView: View {
     private var isValid: Bool {
         !clientName.trimmingCharacters(in: .whitespaces).isEmpty &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
-        lineItems.contains { !$0.description.trimmingCharacters(in: .whitespaces).isEmpty && $0.quantity > 0 && $0.price > 0 }
+        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 && $0.price > 0 }
     }
     
     private func saveInvoice() {
-        let invoice = Invoice(
+        let lineItemModels = lineItems.map { item in
+            LineItemModel(title: item.title, qty: item.qty, price: item.price)
+        }
+        
+        let invoice = InvoiceModel(
             number: invoiceNumber,
             clientName: clientName,
-            totalAmount: total,
-            status: .draft,
-            date: issueDate
+            statusRaw: InvoiceStatus.draft.rawValue,
+            issueDate: issueDate,
+            dueDate: dueDate,
+            taxPercent: taxPercent,
+            createdAt: Date(),
+            items: lineItemModels
         )
-        onSave(invoice)
-        dismiss()
+        
+        modelContext.insert(invoice)
+        
+        do {
+            try modelContext.save()
+            dismiss()
+        } catch {
+            print("Failed to save invoice: \(error)")
+        }
     }
+}
+
+// MARK: - Line Item Data (temporary struct for form)
+struct LineItemData: Identifiable {
+    let id = UUID()
+    var title: String
+    var qty: Int
+    var price: Double
 }
 
 // MARK: - Line Item Row
 struct LineItemRow: View {
-    @Binding var item: LineItem
+    @Binding var item: LineItemData
+    
+    private var itemTotal: Double {
+        Double(item.qty) * item.price
+    }
     
     var body: some View {
         VStack(spacing: 8) {
-            TextField("Description", text: $item.description)
+            TextField("Description", text: $item.title)
             
             HStack {
                 Text("Qty:")
                     .foregroundColor(.secondary)
-                TextField("1", value: $item.quantity, format: .number)
+                TextField("1", value: $item.qty, format: .number)
                     .keyboardType(.numberPad)
                     .frame(width: 60)
                 
@@ -420,7 +470,7 @@ struct LineItemRow: View {
             
             HStack {
                 Spacer()
-                Text("Total: \(String(format: "$%.2f", item.total))")
+                Text("Total: \(String(format: "$%.2f", itemTotal))")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -431,16 +481,22 @@ struct LineItemRow: View {
 
 // MARK: - Invoice Detail View
 struct InvoiceDetailView: View {
-    let invoice: Invoice
+    let invoice: InvoiceModel
     
-    private var formattedDate: String {
+    private var formattedIssueDate: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .long
-        return formatter.string(from: invoice.date)
+        return formatter.string(from: invoice.issueDate)
+    }
+    
+    private var formattedDueDate: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        return formatter.string(from: invoice.dueDate)
     }
     
     private var formattedAmount: String {
-        String(format: "$%.2f", invoice.totalAmount)
+        String(format: "$%.2f", invoice.total)
     }
     
     var body: some View {
@@ -454,7 +510,8 @@ struct InvoiceDetailView: View {
                 DetailRow(label: "Client Name", value: invoice.clientName)
                 DetailRow(label: "Total Amount", value: formattedAmount)
                 DetailRow(label: "Status", value: invoice.status.rawValue)
-                DetailRow(label: "Date", value: formattedDate)
+                DetailRow(label: "Issue Date", value: formattedIssueDate)
+                DetailRow(label: "Due Date", value: formattedDueDate)
             }
             .padding()
             
