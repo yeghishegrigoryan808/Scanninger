@@ -91,8 +91,8 @@ final class InvoiceModel {
     var businessEmail: String
     var businessLogoData: Data?
     
-    // Optional relationship (nullify on delete, not cascade)
-    @Relationship(deleteRule: .nullify) var businessProfile: BusinessProfileModel?
+    // Optional relationship (no annotations - manually managed)
+    var businessProfile: BusinessProfileModel?
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
@@ -131,25 +131,25 @@ final class InvoiceModel {
         isPaid ? "Paid" : "Unpaid"
     }
     
-    // Helper properties to get business info (snapshot first, then fallback to profile)
+    // Helper properties to get business info (use only snapshot fields, no fallback to avoid crashes)
     var displayBusinessName: String {
-        !businessName.isEmpty ? businessName : (businessProfile?.name ?? "")
+        businessName
     }
     
     var displayBusinessAddress: String {
-        !businessAddress.isEmpty ? businessAddress : (businessProfile?.address ?? "")
+        businessAddress
     }
     
     var displayBusinessPhone: String {
-        !businessPhone.isEmpty ? businessPhone : (businessProfile?.phone ?? "")
+        businessPhone
     }
     
     var displayBusinessEmail: String {
-        !businessEmail.isEmpty ? businessEmail : (businessProfile?.email ?? "")
+        businessEmail
     }
     
     var displayBusinessLogoData: Data? {
-        businessLogoData ?? businessProfile?.logoData
+        businessLogoData
     }
     
     var subtotal: Double {
@@ -440,11 +440,6 @@ struct CreateInvoiceView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
-                            
-                            Button("Add Business Profile") {
-                                showCreateBusinessProfile = true
-                            }
-                            .buttonStyle(.borderedProminent)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -456,6 +451,11 @@ struct CreateInvoiceView: View {
                             }
                         }
                     }
+                    
+                    Button("Add Business Profile") {
+                        showCreateBusinessProfile = true
+                    }
+                    .buttonStyle(.bordered)
                 }
                 
                 Section("Invoice Information") {
@@ -522,7 +522,9 @@ struct CreateInvoiceView: View {
                 invoiceNumber = nextInvoiceNumber
             }
             .sheet(isPresented: $showCreateBusinessProfile) {
-                CreateBusinessProfileView()
+                CreateBusinessProfileView { newProfile in
+                    selectedBusiness = newProfile
+                }
             }
         }
     }
@@ -644,11 +646,6 @@ struct EditInvoiceView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
-                            
-                            Button("Add Business Profile") {
-                                showCreateBusinessProfile = true
-                            }
-                            .buttonStyle(.borderedProminent)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -660,6 +657,11 @@ struct EditInvoiceView: View {
                             }
                         }
                     }
+                    
+                    Button("Add Business Profile") {
+                        showCreateBusinessProfile = true
+                    }
+                    .buttonStyle(.bordered)
                 }
                 
                 Section("Invoice Information") {
@@ -726,7 +728,9 @@ struct EditInvoiceView: View {
                 loadInvoiceData()
             }
             .sheet(isPresented: $showCreateBusinessProfile) {
-                CreateBusinessProfileView()
+                CreateBusinessProfileView { newProfile in
+                    selectedBusiness = newProfile
+                }
             }
         }
     }
@@ -1450,12 +1454,18 @@ struct CreateBusinessProfileView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
     
+    var onSave: ((BusinessProfileModel) -> Void)?
+    
     @State private var name = ""
     @State private var address = ""
     @State private var phone = ""
     @State private var email = ""
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
+    
+    init(onSave: ((BusinessProfileModel) -> Void)? = nil) {
+        self.onSave = onSave
+    }
     
     var body: some View {
         NavigationStack {
@@ -1542,6 +1552,7 @@ struct CreateBusinessProfileView: View {
         
         do {
             try modelContext.save()
+            onSave?(business)
             dismiss()
         } catch {
             print("Failed to save business profile: \(error)")
@@ -1800,7 +1811,19 @@ struct BusinessProfilesView: View {
     private func deleteBusinessProfiles(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(businessProfiles[index])
+                let businessToDelete = businessProfiles[index]
+                
+                // Find all invoices referencing this business profile and set businessProfile to nil
+                let descriptor = FetchDescriptor<InvoiceModel>()
+                if let allInvoices = try? modelContext.fetch(descriptor) {
+                    for invoice in allInvoices {
+                        if invoice.businessProfile == businessToDelete {
+                            invoice.businessProfile = nil
+                        }
+                    }
+                }
+                
+                modelContext.delete(businessToDelete)
             }
         }
         
