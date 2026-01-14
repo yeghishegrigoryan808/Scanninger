@@ -84,6 +84,12 @@ final class InvoiceModel {
     var createdAt: Date
     var paidAt: Date?
     
+    // Client snapshot fields (stored on invoice)
+    var clientAddress: String
+    var clientPhone: String
+    var clientEmail: String
+    var clientTaxId: String
+    
     // Business snapshot fields (stored on invoice)
     var businessName: String
     var businessAddress: String
@@ -96,7 +102,7 @@ final class InvoiceModel {
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessLogoData: Data? = nil) {
+    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessLogoData: Data? = nil) {
         self.number = number
         self.clientName = clientName
         self.statusRaw = statusRaw
@@ -107,6 +113,10 @@ final class InvoiceModel {
         self.businessProfile = business
         self.items = items
         self.paidAt = paidAt
+        self.clientAddress = clientAddress
+        self.clientPhone = clientPhone
+        self.clientEmail = clientEmail
+        self.clientTaxId = clientTaxId
         self.businessName = businessName
         self.businessAddress = businessAddress
         self.businessPhone = businessPhone
@@ -249,15 +259,27 @@ struct InvoicesView: View {
                 }
                 
                 // Invoices list
-                List {
-                    ForEach(filteredInvoices) { invoice in
-                        NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
-                            InvoiceRow(invoice: invoice)
-                        }
+                if filteredInvoices.isEmpty {
+                    VStack(spacing: 8) {
+                        Text("No invoices yet")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        Text("Tap + to add one")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    .onDelete(perform: deleteInvoices)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(filteredInvoices) { invoice in
+                            NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
+                                InvoiceRow(invoice: invoice)
+                            }
+                        }
+                        .onDelete(perform: deleteInvoices)
+                    }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
             }
             .navigationTitle("Invoices")
             .toolbar {
@@ -411,6 +433,10 @@ struct CreateInvoiceView: View {
     @State private var manualBusinessPhone = ""
     @State private var manualBusinessEmail = ""
     @State private var clientName = ""
+    @State private var clientAddress = ""
+    @State private var clientPhone = ""
+    @State private var clientEmail = ""
+    @State private var clientTaxId = ""
     @State private var invoiceNumber = ""
     @State private var issueDate = Date()
     @State private var dueDate = Date()
@@ -458,8 +484,18 @@ struct CreateInvoiceView: View {
                     .buttonStyle(.bordered)
                 }
                 
-                Section("Invoice Information") {
+                Section("Client Information") {
                     TextField("Client Name", text: $clientName)
+                    TextField("Address (optional)", text: $clientAddress)
+                    TextField("Phone (optional)", text: $clientPhone)
+                        .keyboardType(.phonePad)
+                    TextField("Email (optional)", text: $clientEmail)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                    TextField("Tax ID (optional)", text: $clientTaxId)
+                }
+                
+                Section("Invoice Information") {
                     TextField("Invoice Number", text: $invoiceNumber)
                     DatePicker("Issue Date", selection: $issueDate, displayedComponents: .date)
                     DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
@@ -588,7 +624,11 @@ struct CreateInvoiceView: View {
             paidAt: nil
         )
         
-        // Assign snapshot fields and businessProfile
+        // Assign snapshot fields
+        invoice.clientAddress = clientAddress
+        invoice.clientPhone = clientPhone
+        invoice.clientEmail = clientEmail
+        invoice.clientTaxId = clientTaxId
         invoice.businessProfile = finalBusinessProfile
         invoice.businessName = snapshotName
         invoice.businessAddress = snapshotAddress
@@ -617,6 +657,10 @@ struct EditInvoiceView: View {
     
     @State private var selectedBusiness: BusinessProfileModel?
     @State private var clientName = ""
+    @State private var clientAddress = ""
+    @State private var clientPhone = ""
+    @State private var clientEmail = ""
+    @State private var clientTaxId = ""
     @State private var invoiceNumber = ""
     @State private var issueDate = Date()
     @State private var dueDate = Date()
@@ -664,8 +708,18 @@ struct EditInvoiceView: View {
                     .buttonStyle(.bordered)
                 }
                 
-                Section("Invoice Information") {
+                Section("Client Information") {
                     TextField("Client Name", text: $clientName)
+                    TextField("Address (optional)", text: $clientAddress)
+                    TextField("Phone (optional)", text: $clientPhone)
+                        .keyboardType(.phonePad)
+                    TextField("Email (optional)", text: $clientEmail)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                    TextField("Tax ID (optional)", text: $clientTaxId)
+                }
+                
+                Section("Invoice Information") {
                     TextField("Invoice Number", text: $invoiceNumber)
                     DatePicker("Issue Date", selection: $issueDate, displayedComponents: .date)
                     DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
@@ -745,6 +799,10 @@ struct EditInvoiceView: View {
     private func loadInvoiceData() {
         selectedBusiness = invoice.businessProfile
         clientName = invoice.clientName
+        clientAddress = invoice.clientAddress
+        clientPhone = invoice.clientPhone
+        clientEmail = invoice.clientEmail
+        clientTaxId = invoice.clientTaxId
         invoiceNumber = invoice.number
         issueDate = invoice.issueDate
         dueDate = invoice.dueDate
@@ -784,6 +842,10 @@ struct EditInvoiceView: View {
             invoice.businessLogoData = selected.logoData
         }
         invoice.clientName = clientName
+        invoice.clientAddress = clientAddress
+        invoice.clientPhone = clientPhone
+        invoice.clientEmail = clientEmail
+        invoice.clientTaxId = clientTaxId
         invoice.number = invoiceNumber
         invoice.issueDate = issueDate
         invoice.dueDate = dueDate
@@ -1667,11 +1729,12 @@ struct EditBusinessProfileView: View {
 struct ClientsView: View {
     var body: some View {
         NavigationStack {
-            VStack {
-                Text("Clients")
-                    .font(.title2)
+            VStack(spacing: 8) {
+                Text("No clients yet")
+                    .font(.headline)
                     .foregroundColor(.secondary)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Clients")
         }
     }
@@ -1680,11 +1743,12 @@ struct ClientsView: View {
 struct ItemsView: View {
     var body: some View {
         NavigationStack {
-            VStack {
-                Text("Items")
-                    .font(.title2)
+            VStack(spacing: 8) {
+                Text("No items yet")
+                    .font(.headline)
                     .foregroundColor(.secondary)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Items")
         }
     }
@@ -1693,11 +1757,12 @@ struct ItemsView: View {
 struct ReportsView: View {
     var body: some View {
         NavigationStack {
-            VStack {
-                Text("Reports")
-                    .font(.title2)
+            VStack(spacing: 8) {
+                Text("No reports yet")
+                    .font(.headline)
                     .foregroundColor(.secondary)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Reports")
         }
     }
