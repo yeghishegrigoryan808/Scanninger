@@ -72,6 +72,30 @@ final class BusinessProfileModel {
     }
 }
 
+// MARK: - Client Model
+@Model
+final class ClientModel {
+    var name: String
+    var address: String
+    var phone: String
+    var email: String
+    var taxId: String
+    var logoData: Data?
+    var createdAt: Date
+    var updatedAt: Date
+    
+    init(name: String, address: String = "", phone: String = "", email: String = "", taxId: String = "", logoData: Data? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
+        self.name = name
+        self.address = address
+        self.phone = phone
+        self.email = email
+        self.taxId = taxId
+        self.logoData = logoData
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 // MARK: - Invoice Model
 @Model
 final class InvoiceModel {
@@ -1770,17 +1794,319 @@ struct EditBusinessProfileView: View {
     }
 }
 
-struct ClientsView: View {
+// MARK: - Create Client View
+struct CreateClientView: View {
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
+    
+    @State private var name = ""
+    @State private var address = ""
+    @State private var phone = ""
+    @State private var email = ""
+    @State private var taxId = ""
+    @State private var logoData: Data?
+    @State private var selectedPhoto: PhotosPickerItem?
+    
     var body: some View {
         NavigationStack {
-            VStack(spacing: 8) {
-                Text("No clients yet")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
+            Form {
+                Section("Logo") {
+                    if let logoData = logoData, let uiImage = UIImage(data: logoData) {
+                        HStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 80, height: 80)
+                                .cornerRadius(8)
+                            
+                            Spacer()
+                            
+                            Button("Remove Logo") {
+                                self.logoData = nil
+                                selectedPhoto = nil
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                    
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label("Choose Logo", systemImage: "photo")
+                    }
+                    .onChange(of: selectedPhoto) { oldValue, newValue in
+                        Task {
+                            if let newValue = newValue {
+                                if let data = try? await newValue.loadTransferable(type: Data.self) {
+                                    if let uiImage = UIImage(data: data) {
+                                        logoData = uiImage.jpegData(compressionQuality: 0.8)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Section("Client Information") {
+                    TextField("Name", text: $name)
+                    TextField("Address (optional)", text: $address)
+                    TextField("Phone (optional)", text: $phone)
+                        .keyboardType(.phonePad)
+                    TextField("Email (optional)", text: $email)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                    TextField("Tax ID (optional)", text: $taxId)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("Clients")
+            .navigationTitle("New Client")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        saveClient()
+                    }
+                    .disabled(!isValid)
+                }
+            }
         }
+    }
+    
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+    
+    private func saveClient() {
+        let client = ClientModel(
+            name: name,
+            address: address,
+            phone: phone,
+            email: email,
+            taxId: taxId,
+            logoData: logoData
+        )
+        
+        modelContext.insert(client)
+        
+        do {
+            try modelContext.save()
+            dismiss()
+        } catch {
+            print("Failed to save client: \(error)")
+        }
+    }
+}
+
+// MARK: - Edit Client View
+struct EditClientView: View {
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
+    
+    let client: ClientModel
+    
+    @State private var name: String
+    @State private var address: String
+    @State private var phone: String
+    @State private var email: String
+    @State private var taxId: String
+    @State private var logoData: Data?
+    @State private var selectedPhoto: PhotosPickerItem?
+    
+    init(client: ClientModel) {
+        self.client = client
+        _name = State(initialValue: client.name)
+        _address = State(initialValue: client.address)
+        _phone = State(initialValue: client.phone)
+        _email = State(initialValue: client.email)
+        _taxId = State(initialValue: client.taxId)
+        _logoData = State(initialValue: client.logoData)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Logo") {
+                    if let logoData = logoData, let uiImage = UIImage(data: logoData) {
+                        HStack {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 80, height: 80)
+                                .cornerRadius(8)
+                            
+                            Spacer()
+                            
+                            Button("Remove Logo") {
+                                self.logoData = nil
+                                selectedPhoto = nil
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                    
+                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                        Label("Choose Logo", systemImage: "photo")
+                    }
+                    .onChange(of: selectedPhoto) { oldValue, newValue in
+                        Task {
+                            if let newValue = newValue {
+                                if let data = try? await newValue.loadTransferable(type: Data.self) {
+                                    if let uiImage = UIImage(data: data) {
+                                        logoData = uiImage.jpegData(compressionQuality: 0.8)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Section("Client Information") {
+                    TextField("Name", text: $name)
+                    TextField("Address (optional)", text: $address)
+                    TextField("Phone (optional)", text: $phone)
+                        .keyboardType(.phonePad)
+                    TextField("Email (optional)", text: $email)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                    TextField("Tax ID (optional)", text: $taxId)
+                }
+            }
+            .navigationTitle("Edit Client")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        saveClient()
+                    }
+                    .disabled(!isValid)
+                }
+            }
+        }
+    }
+    
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+    
+    private func saveClient() {
+        client.name = name
+        client.address = address
+        client.phone = phone
+        client.email = email
+        client.taxId = taxId
+        client.logoData = logoData
+        client.updatedAt = Date()
+        
+        do {
+            try modelContext.save()
+            dismiss()
+        } catch {
+            print("Failed to save client: \(error)")
+        }
+    }
+}
+
+struct ClientsView: View {
+    @Query(sort: \ClientModel.name) private var clients: [ClientModel]
+    @Environment(\.modelContext) private var modelContext
+    
+    @State private var showCreateClient = false
+    @State private var selectedClient: ClientModel?
+    
+    var body: some View {
+        NavigationStack {
+            Group {
+                if clients.isEmpty {
+                    VStack(spacing: 8) {
+                        Text("No clients yet")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(clients) { client in
+                            NavigationLink(destination: EditClientView(client: client)) {
+                                ClientRow(client: client)
+                            }
+                        }
+                        .onDelete(perform: deleteClients)
+                    }
+                }
+            }
+            .navigationTitle("Clients")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showCreateClient = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showCreateClient) {
+                CreateClientView()
+            }
+        }
+    }
+    
+    private func deleteClients(offsets: IndexSet) {
+        withAnimation {
+            for index in offsets {
+                modelContext.delete(clients[index])
+            }
+        }
+        
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to delete client: \(error)")
+        }
+    }
+}
+
+// MARK: - Client Row
+struct ClientRow: View {
+    let client: ClientModel
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Logo thumbnail
+            Group {
+                if let logoData = client.logoData, let uiImage = UIImage(data: logoData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Image(systemName: "person.crop.circle")
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .background(Color(.systemGray5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            
+            // Client info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(client.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                if !client.email.isEmpty {
+                    Text(client.email)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else if !client.phone.isEmpty {
+                    Text(client.phone)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
     }
 }
 
