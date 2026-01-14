@@ -34,9 +34,9 @@ struct MainTabView: View {
                     Label("Reports", systemImage: "chart.bar")
                 }
             
-            SettingsView()
+            ProfileView()
                 .tabItem {
-                    Label("Settings", systemImage: "gear")
+                    Label("Profile", systemImage: "person.crop.circle")
                 }
         }
     }
@@ -999,6 +999,7 @@ struct TemplateSelectionView: View {
 // MARK: - PDF Preview View
 struct PDFPreviewView: View {
     let pdfURL: URL
+    @Environment(\.dismiss) var dismiss
     @State private var shareItem: ShareItem?
     
     var body: some View {
@@ -1006,6 +1007,12 @@ struct PDFPreviewView: View {
             PDFKitView(url: pdfURL)
                 .navigationTitle("PDF Preview")
                 .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Close") {
+                            dismiss()
+                        }
+                    }
+                    
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button(action: {
                             shareItem = ShareItem(url: pdfURL)
@@ -1531,8 +1538,81 @@ struct ReportsView: View {
     }
 }
 
-// MARK: - Business Profiles View (replaces Settings)
-struct SettingsView: View {
+// MARK: - Profile View
+struct ProfileView: View {
+    @AppStorage("appearanceMode") private var appearanceMode = "system"
+    @State private var showLogoutAlert = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Business") {
+                    NavigationLink(destination: BusinessProfilesView()) {
+                        Label("Business Profiles", systemImage: "building.2")
+                    }
+                }
+                
+                Section("App") {
+                    NavigationLink(destination: LanguageSettingsView()) {
+                        Label("Language", systemImage: "globe")
+                    }
+                    
+                    Picker("Appearance", selection: $appearanceMode) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                }
+                
+                Section("Legal") {
+                    NavigationLink(destination: PrivacyPolicyView()) {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                    }
+                    
+                    NavigationLink(destination: TermsOfUseView()) {
+                        Label("Terms of Use", systemImage: "doc.text")
+                    }
+                }
+                
+                Section("Account") {
+                    Button(action: {
+                        showLogoutAlert = true
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Log out")
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Profile")
+            .preferredColorScheme(appearanceMode == "system" ? nil : (appearanceMode == "light" ? .light : .dark))
+            .alert("Logout", isPresented: $showLogoutAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Logout coming soon")
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 4) {
+                    if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+                       let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                        Text("Version \(version) (\(build))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Color(.systemGroupedBackground))
+            }
+        }
+    }
+}
+
+// MARK: - Business Profiles View
+struct BusinessProfilesView: View {
     @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
     @Environment(\.modelContext) private var modelContext
     
@@ -1540,28 +1620,26 @@ struct SettingsView: View {
     @State private var selectedBusiness: BusinessProfileModel?
     
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(businessProfiles) { profile in
-                    NavigationLink(destination: EditBusinessProfileView(business: profile)) {
-                        BusinessProfileRow(profile: profile)
-                    }
-                }
-                .onDelete(perform: deleteBusinessProfiles)
-            }
-            .navigationTitle("Business Profiles")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateBusinessProfile = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
+        List {
+            ForEach(businessProfiles) { profile in
+                NavigationLink(destination: EditBusinessProfileView(business: profile)) {
+                    BusinessProfileRow(profile: profile)
                 }
             }
-            .sheet(isPresented: $showCreateBusinessProfile) {
-                CreateBusinessProfileView()
+            .onDelete(perform: deleteBusinessProfiles)
+        }
+        .navigationTitle("Business Profiles")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showCreateBusinessProfile = true
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
+        }
+        .sheet(isPresented: $showCreateBusinessProfile) {
+            CreateBusinessProfileView()
         }
     }
     
@@ -1601,6 +1679,82 @@ struct BusinessProfileRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Language Settings View
+struct LanguageSettingsView: View {
+    var body: some View {
+        VStack {
+            Text("Language settings coming soon")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding()
+        }
+        .navigationTitle("Language")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Privacy Policy View
+struct PrivacyPolicyView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Privacy Policy")
+                    .font(.title)
+                    .padding(.horizontal)
+                
+                Text("""
+                This is a placeholder privacy policy. In a real application, this would contain detailed information about:
+                
+                • How we collect and use your data
+                • Data storage and security measures
+                • Your rights regarding your personal information
+                • Third-party services we may use
+                • Contact information for privacy concerns
+                
+                This application stores invoice and business profile data locally on your device using SwiftData. No data is transmitted to external servers without your explicit consent.
+                """)
+                .font(.body)
+                .padding(.horizontal)
+            }
+            .padding(.vertical)
+        }
+        .navigationTitle("Privacy Policy")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Terms of Use View
+struct TermsOfUseView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Terms of Use")
+                    .font(.title)
+                    .padding(.horizontal)
+                
+                Text("""
+                This is a placeholder terms of use document. In a real application, this would contain:
+                
+                • Acceptance of terms
+                • Description of the service
+                • User responsibilities and obligations
+                • Intellectual property rights
+                • Limitation of liability
+                • Dispute resolution procedures
+                • Changes to terms
+                
+                By using this application, you agree to use it responsibly and in accordance with applicable laws and regulations.
+                """)
+                .font(.body)
+                .padding(.horizontal)
+            }
+            .padding(.vertical)
+        }
+        .navigationTitle("Terms of Use")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
