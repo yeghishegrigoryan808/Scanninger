@@ -81,6 +81,7 @@ final class InvoiceModel {
     var issueDate: Date
     var dueDate: Date
     var taxPercent: Double
+    var currencyCode: String
     var createdAt: Date
     var paidAt: Date?
     
@@ -102,13 +103,14 @@ final class InvoiceModel {
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessLogoData: Data? = nil) {
+    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessLogoData: Data? = nil) {
         self.number = number
         self.clientName = clientName
         self.statusRaw = statusRaw
         self.issueDate = issueDate
         self.dueDate = dueDate
         self.taxPercent = taxPercent
+        self.currencyCode = currencyCode
         self.createdAt = createdAt
         self.businessProfile = business
         self.items = items
@@ -187,6 +189,15 @@ final class LineItemModel {
     var total: Double {
         Double(qty) * price
     }
+}
+
+// MARK: - Currency Formatting Helper
+func formatCurrency(_ amount: Double, currencyCode: String) -> String {
+    let code = currencyCode.isEmpty ? "USD" : currencyCode
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .currency
+    formatter.currencyCode = code
+    return formatter.string(from: NSNumber(value: amount)) ?? String(format: "%.2f", amount)
 }
 
 // MARK: - InvoicesView
@@ -378,7 +389,7 @@ struct InvoiceRow: View {
     }
     
     private var formattedAmount: String {
-        String(format: "$%.2f", invoice.total)
+        formatCurrency(invoice.total, currencyCode: invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode)
     }
     
     var body: some View {
@@ -438,11 +449,20 @@ struct CreateInvoiceView: View {
     @State private var clientEmail = ""
     @State private var clientTaxId = ""
     @State private var invoiceNumber = ""
+    @State private var currencyCode = "USD"
     @State private var issueDate = Date()
     @State private var dueDate = Date()
     @State private var lineItems: [LineItemData] = [LineItemData(title: "", qty: 1, price: 0.0)]
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
+    
+    private let currencies: [(code: String, symbol: String)] = [
+        ("USD", "$"),
+        ("EUR", "€"),
+        ("GBP", "£"),
+        ("RUB", "₽"),
+        ("AMD", "֏")
+    ]
     
     private var subtotal: Double {
         lineItems.reduce(0) { $0 + (Double($1.qty) * $1.price) }
@@ -497,13 +517,18 @@ struct CreateInvoiceView: View {
                 
                 Section("Invoice Information") {
                     TextField("Invoice Number", text: $invoiceNumber)
+                    Picker("Currency", selection: $currencyCode) {
+                        ForEach(currencies, id: \.code) { currency in
+                            Text("\(currency.code) (\(currency.symbol))").tag(currency.code)
+                        }
+                    }
                     DatePicker("Issue Date", selection: $issueDate, displayedComponents: .date)
                     DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
                 }
                 
                 Section("Line Items") {
                     ForEach($lineItems) { $item in
-                        LineItemRow(item: $item)
+                        LineItemRow(item: $item, currencyCode: currencyCode)
                     }
                     
                     Button(action: {
@@ -517,7 +542,7 @@ struct CreateInvoiceView: View {
                     HStack {
                         Text("Subtotal")
                         Spacer()
-                        Text(String(format: "$%.2f", subtotal))
+                        Text(formatCurrency(subtotal, currencyCode: currencyCode))
                             .foregroundColor(.secondary)
                     }
                     
@@ -534,7 +559,7 @@ struct CreateInvoiceView: View {
                         Text("Total")
                             .fontWeight(.semibold)
                         Spacer()
-                        Text(String(format: "$%.2f", total))
+                        Text(formatCurrency(total, currencyCode: currencyCode))
                             .fontWeight(.semibold)
                     }
                 }
@@ -621,7 +646,8 @@ struct CreateInvoiceView: View {
             createdAt: Date(),
             business: finalBusinessProfile,
             items: lineItemModels,
-            paidAt: nil
+            paidAt: nil,
+            currencyCode: currencyCode
         )
         
         // Assign snapshot fields
@@ -662,11 +688,20 @@ struct EditInvoiceView: View {
     @State private var clientEmail = ""
     @State private var clientTaxId = ""
     @State private var invoiceNumber = ""
+    @State private var currencyCode = "USD"
     @State private var issueDate = Date()
     @State private var dueDate = Date()
     @State private var lineItems: [LineItemData] = []
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
+    
+    private let currencies: [(code: String, symbol: String)] = [
+        ("USD", "$"),
+        ("EUR", "€"),
+        ("GBP", "£"),
+        ("RUB", "₽"),
+        ("AMD", "֏")
+    ]
     
     private var subtotal: Double {
         lineItems.reduce(0) { $0 + (Double($1.qty) * $1.price) }
@@ -721,13 +756,18 @@ struct EditInvoiceView: View {
                 
                 Section("Invoice Information") {
                     TextField("Invoice Number", text: $invoiceNumber)
+                    Picker("Currency", selection: $currencyCode) {
+                        ForEach(currencies, id: \.code) { currency in
+                            Text("\(currency.code) (\(currency.symbol))").tag(currency.code)
+                        }
+                    }
                     DatePicker("Issue Date", selection: $issueDate, displayedComponents: .date)
                     DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
                 }
                 
                 Section("Line Items") {
                     ForEach($lineItems) { $item in
-                        LineItemRow(item: $item)
+                        LineItemRow(item: $item, currencyCode: currencyCode)
                     }
                     
                     Button(action: {
@@ -741,7 +781,7 @@ struct EditInvoiceView: View {
                     HStack {
                         Text("Subtotal")
                         Spacer()
-                        Text(String(format: "$%.2f", subtotal))
+                        Text(formatCurrency(subtotal, currencyCode: currencyCode))
                             .foregroundColor(.secondary)
                     }
                     
@@ -758,7 +798,7 @@ struct EditInvoiceView: View {
                         Text("Total")
                             .fontWeight(.semibold)
                         Spacer()
-                        Text(String(format: "$%.2f", total))
+                        Text(formatCurrency(total, currencyCode: currencyCode))
                             .fontWeight(.semibold)
                     }
                 }
@@ -804,6 +844,7 @@ struct EditInvoiceView: View {
         clientEmail = invoice.clientEmail
         clientTaxId = invoice.clientTaxId
         invoiceNumber = invoice.number
+        currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
         issueDate = invoice.issueDate
         dueDate = invoice.dueDate
         taxPercent = invoice.taxPercent
@@ -847,6 +888,7 @@ struct EditInvoiceView: View {
         invoice.clientEmail = clientEmail
         invoice.clientTaxId = clientTaxId
         invoice.number = invoiceNumber
+        invoice.currencyCode = currencyCode
         invoice.issueDate = issueDate
         invoice.dueDate = dueDate
         invoice.taxPercent = taxPercent
@@ -872,6 +914,7 @@ struct LineItemData: Identifiable {
 // MARK: - Line Item Row
 struct LineItemRow: View {
     @Binding var item: LineItemData
+    var currencyCode: String
     
     private var itemTotal: Double {
         Double(item.qty) * item.price
@@ -900,7 +943,7 @@ struct LineItemRow: View {
             
             HStack {
                 Spacer()
-                Text("Total: \(String(format: "$%.2f", itemTotal))")
+                Text("Total: \(formatCurrency(itemTotal, currencyCode: currencyCode))")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -937,7 +980,7 @@ struct InvoiceDetailView: View {
     }
     
     private var formattedAmount: String {
-        String(format: "$%.2f", invoice.total)
+        formatCurrency(invoice.total, currencyCode: invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode)
     }
     
     var body: some View {
@@ -1428,13 +1471,14 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         yPosition += 10
         
         // Items list
+        let currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
         let items = invoice.items ?? []
         for item in items {
             let itemTotal = Double(item.qty) * item.price
             drawText(item.title, at: CGPoint(x: margin, y: yPosition), font: detailFont, width: itemColumnWidth)
             drawText("\(item.qty)", at: CGPoint(x: margin + itemColumnWidth, y: yPosition), font: detailFont, width: qtyColumnWidth)
-            drawText(String(format: "$%.2f", item.price), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth, y: yPosition), font: detailFont, width: priceColumnWidth)
-            drawText(String(format: "$%.2f", itemTotal), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth + priceColumnWidth, y: yPosition), font: detailFont, width: totalColumnWidth)
+            drawText(formatCurrency(item.price, currencyCode: currencyCode), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth, y: yPosition), font: detailFont, width: priceColumnWidth)
+            drawText(formatCurrency(itemTotal, currencyCode: currencyCode), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth + priceColumnWidth, y: yPosition), font: detailFont, width: totalColumnWidth)
             yPosition += spacing
         }
         
@@ -1448,16 +1492,16 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         let valueWidth = totalsWidth * 0.4
         
         drawText("Subtotal:", at: CGPoint(x: totalsStartX, y: totalsY), font: detailFont, alignment: .right, width: labelWidth)
-        drawText(String(format: "$%.2f", invoice.subtotal), at: CGPoint(x: totalsStartX + labelWidth, y: totalsY), font: detailFont, alignment: .right, width: valueWidth)
+        drawText(formatCurrency(invoice.subtotal, currencyCode: currencyCode), at: CGPoint(x: totalsStartX + labelWidth, y: totalsY), font: detailFont, alignment: .right, width: valueWidth)
         yPosition += spacing
         
         drawText("Tax (\(String(format: "%.1f", invoice.taxPercent))%):", at: CGPoint(x: totalsStartX, y: yPosition), font: detailFont, alignment: .right, width: labelWidth)
         let taxAmount = invoice.subtotal * (invoice.taxPercent / 100.0)
-        drawText(String(format: "$%.2f", taxAmount), at: CGPoint(x: totalsStartX + labelWidth, y: yPosition), font: detailFont, alignment: .right, width: valueWidth)
+        drawText(formatCurrency(taxAmount, currencyCode: currencyCode), at: CGPoint(x: totalsStartX + labelWidth, y: yPosition), font: detailFont, alignment: .right, width: valueWidth)
         yPosition += spacing
         
         drawText("Total:", at: CGPoint(x: totalsStartX, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize + 2), alignment: .right, width: labelWidth)
-        drawText(String(format: "$%.2f", invoice.total), at: CGPoint(x: totalsStartX + labelWidth, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize + 2), alignment: .right, width: valueWidth)
+        drawText(formatCurrency(invoice.total, currencyCode: currencyCode), at: CGPoint(x: totalsStartX + labelWidth, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize + 2), alignment: .right, width: valueWidth)
         yPosition += spacing * 1.5
         
         // Status
