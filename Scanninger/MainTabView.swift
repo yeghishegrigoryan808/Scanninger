@@ -82,12 +82,13 @@ final class InvoiceModel {
     var dueDate: Date
     var taxPercent: Double
     var createdAt: Date
+    var paidAt: Date?
     
     var business: BusinessProfileModel?
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil) {
+    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil) {
         self.number = number
         self.clientName = clientName
         self.statusRaw = statusRaw
@@ -97,6 +98,7 @@ final class InvoiceModel {
         self.createdAt = createdAt
         self.business = business
         self.items = items
+        self.paidAt = paidAt
     }
     
     var status: InvoiceStatus {
@@ -106,6 +108,14 @@ final class InvoiceModel {
         set {
             statusRaw = newValue.rawValue
         }
+    }
+    
+    var isPaid: Bool {
+        paidAt != nil
+    }
+    
+    var statusText: String {
+        isPaid ? "Paid" : "Unpaid"
     }
     
     var subtotal: Double {
@@ -141,16 +151,20 @@ struct InvoicesView: View {
     @Environment(\.modelContext) private var modelContext
     
     @State private var searchText = ""
-    @State private var selectedStatus: InvoiceStatus? = nil
+    @State private var selectedFilter: String? = nil // "Unpaid" or "Paid" or nil for All
     @State private var showCreateInvoice = false
     @State private var selectedInvoice: InvoiceModel?
     
     private var filteredInvoices: [InvoiceModel] {
         var filtered = allInvoices
         
-        // Filter by status
-        if let selectedStatus = selectedStatus {
-            filtered = filtered.filter { $0.status == selectedStatus }
+        // Filter by paid status
+        if let selectedFilter = selectedFilter {
+            if selectedFilter == "Paid" {
+                filtered = filtered.filter { $0.isPaid }
+            } else if selectedFilter == "Unpaid" {
+                filtered = filtered.filter { !$0.isPaid }
+            }
         }
         
         // Filter by search text
@@ -177,18 +191,23 @@ struct InvoicesView: View {
                     HStack(spacing: 12) {
                         FilterButton(
                             title: "All",
-                            isSelected: selectedStatus == nil
+                            isSelected: selectedFilter == nil
                         ) {
-                            selectedStatus = nil
+                            selectedFilter = nil
                         }
                         
-                        ForEach(InvoiceStatus.allCases, id: \.self) { status in
-                            FilterButton(
-                                title: status.rawValue,
-                                isSelected: selectedStatus == status
-                            ) {
-                                selectedStatus = status
-                            }
+                        FilterButton(
+                            title: "Unpaid",
+                            isSelected: selectedFilter == "Unpaid"
+                        ) {
+                            selectedFilter = selectedFilter == "Unpaid" ? nil : "Unpaid"
+                        }
+                        
+                        FilterButton(
+                            title: "Paid",
+                            isSelected: selectedFilter == "Paid"
+                        ) {
+                            selectedFilter = selectedFilter == "Paid" ? nil : "Paid"
                         }
                     }
                     .padding(.horizontal)
@@ -293,12 +312,7 @@ struct InvoiceRow: View {
     let invoice: InvoiceModel
     
     private var statusColor: Color {
-        switch invoice.status {
-        case .draft: return .gray
-        case .sent: return .blue
-        case .paid: return .green
-        case .overdue: return .red
-        }
+        invoice.isPaid ? .green : .orange
     }
     
     private var formattedDate: String {
@@ -334,7 +348,7 @@ struct InvoiceRow: View {
                     .font(.headline)
                     .foregroundColor(.primary)
                 
-                Text(invoice.status.rawValue)
+                Text(invoice.statusText)
                     .font(.caption)
                     .fontWeight(.medium)
                     .foregroundColor(statusColor)
@@ -489,13 +503,14 @@ struct CreateInvoiceView: View {
         let invoice = InvoiceModel(
             number: invoiceNumber,
             clientName: clientName,
-            statusRaw: InvoiceStatus.draft.rawValue,
+            statusRaw: "Unpaid",
             issueDate: issueDate,
             dueDate: dueDate,
             taxPercent: taxPercent,
             createdAt: Date(),
             business: selectedBusiness,
-            items: lineItemModels
+            items: lineItemModels,
+            paidAt: nil
         )
         
         modelContext.insert(invoice)
@@ -808,11 +823,31 @@ struct InvoiceDetailView: View {
                 DetailRow(label: "Invoice Number", value: invoice.number)
                 DetailRow(label: "Client Name", value: invoice.clientName)
                 DetailRow(label: "Total Amount", value: formattedAmount)
-                DetailRow(label: "Status", value: invoice.status.rawValue)
+                DetailRow(label: "Status", value: invoice.statusText)
                 DetailRow(label: "Issue Date", value: formattedIssueDate)
                 DetailRow(label: "Due Date", value: formattedDueDate)
+                if invoice.isPaid, let paidAt = invoice.paidAt {
+                    DetailRow(label: "Paid on", value: formatPaidDate(paidAt))
+                }
             }
             .padding()
+            
+            // Mark as Paid/Unpaid Button
+            Button(action: {
+                togglePaidStatus()
+            }) {
+                HStack {
+                    Image(systemName: invoice.isPaid ? "xmark.circle" : "checkmark.circle")
+                    Text(invoice.isPaid ? "Mark as Unpaid" : "Mark as Paid")
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(invoice.isPaid ? Color.orange : Color.green)
+                .foregroundColor(.white)
+                .cornerRadius(10)
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
             
             // Create PDF Button
             Button(action: {
@@ -888,6 +923,29 @@ struct InvoiceDetailView: View {
             }
         } message: {
             Text("Are you sure you want to delete this invoice? This action cannot be undone.")
+        }
+    }
+    
+    private func formatPaidDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        return formatter.string(from: date)
+    }
+    
+    private func togglePaidStatus() {
+        if invoice.isPaid {
+            // Mark as unpaid
+            invoice.paidAt = nil
+        } else {
+            // Mark as paid
+            invoice.paidAt = Date()
+        }
+        
+        do {
+            try modelContext.save()
+        } catch {
+            errorMessage = "Failed to update invoice: \(error.localizedDescription)"
+            showErrorAlert = true
         }
     }
     
@@ -1241,7 +1299,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         yPosition += spacing * 1.5
         
         // Status
-        drawText("Status: \(invoice.status.rawValue)", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize))
+        drawText("Status: \(invoice.statusText)", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize))
     }
     
     // Remove existing file if it exists
