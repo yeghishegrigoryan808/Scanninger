@@ -84,11 +84,19 @@ final class InvoiceModel {
     var createdAt: Date
     var paidAt: Date?
     
-    var business: BusinessProfileModel?
+    // Business snapshot fields (stored on invoice)
+    var businessName: String
+    var businessAddress: String
+    var businessPhone: String
+    var businessEmail: String
+    var businessLogoData: Data?
+    
+    // Optional relationship (nullify on delete, not cascade)
+    @Relationship(deleteRule: .nullify) var businessProfile: BusinessProfileModel?
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil) {
+    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessLogoData: Data? = nil) {
         self.number = number
         self.clientName = clientName
         self.statusRaw = statusRaw
@@ -96,9 +104,14 @@ final class InvoiceModel {
         self.dueDate = dueDate
         self.taxPercent = taxPercent
         self.createdAt = createdAt
-        self.business = business
+        self.businessProfile = business
         self.items = items
         self.paidAt = paidAt
+        self.businessName = businessName
+        self.businessAddress = businessAddress
+        self.businessPhone = businessPhone
+        self.businessEmail = businessEmail
+        self.businessLogoData = businessLogoData
     }
     
     var status: InvoiceStatus {
@@ -116,6 +129,27 @@ final class InvoiceModel {
     
     var statusText: String {
         isPaid ? "Paid" : "Unpaid"
+    }
+    
+    // Helper properties to get business info (snapshot first, then fallback to profile)
+    var displayBusinessName: String {
+        !businessName.isEmpty ? businessName : (businessProfile?.name ?? "")
+    }
+    
+    var displayBusinessAddress: String {
+        !businessAddress.isEmpty ? businessAddress : (businessProfile?.address ?? "")
+    }
+    
+    var displayBusinessPhone: String {
+        !businessPhone.isEmpty ? businessPhone : (businessProfile?.phone ?? "")
+    }
+    
+    var displayBusinessEmail: String {
+        !businessEmail.isEmpty ? businessEmail : (businessProfile?.email ?? "")
+    }
+    
+    var displayBusinessLogoData: Data? {
+        businessLogoData ?? businessProfile?.logoData
     }
     
     var subtotal: Double {
@@ -371,6 +405,11 @@ struct CreateInvoiceView: View {
     let nextInvoiceNumber: String
     
     @State private var selectedBusiness: BusinessProfileModel?
+    @State private var useManualEntry = false
+    @State private var manualBusinessName = ""
+    @State private var manualBusinessAddress = ""
+    @State private var manualBusinessPhone = ""
+    @State private var manualBusinessEmail = ""
     @State private var clientName = ""
     @State private var invoiceNumber = ""
     @State private var issueDate = Date()
@@ -489,7 +528,8 @@ struct CreateInvoiceView: View {
     }
     
     private var isValid: Bool {
-        selectedBusiness != nil &&
+        let hasBusiness = useManualEntry ? !manualBusinessName.trimmingCharacters(in: .whitespaces).isEmpty : selectedBusiness != nil
+        return hasBusiness &&
         !clientName.trimmingCharacters(in: .whitespaces).isEmpty &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
         lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 && $0.price > 0 }
@@ -500,6 +540,39 @@ struct CreateInvoiceView: View {
             LineItemModel(title: item.title, qty: item.qty, price: item.price)
         }
         
+        var finalBusinessProfile: BusinessProfileModel?
+        var snapshotName = ""
+        var snapshotAddress = ""
+        var snapshotPhone = ""
+        var snapshotEmail = ""
+        var snapshotLogoData: Data? = nil
+        
+        if useManualEntry {
+            // Create new business profile from manual entry
+            let newProfile = BusinessProfileModel(
+                name: manualBusinessName,
+                address: manualBusinessAddress,
+                phone: manualBusinessPhone,
+                email: manualBusinessEmail
+            )
+            modelContext.insert(newProfile)
+            finalBusinessProfile = newProfile
+            
+            // Copy to snapshot
+            snapshotName = manualBusinessName
+            snapshotAddress = manualBusinessAddress
+            snapshotPhone = manualBusinessPhone
+            snapshotEmail = manualBusinessEmail
+        } else if let selected = selectedBusiness {
+            // Use selected profile - copy to snapshot
+            finalBusinessProfile = selected
+            snapshotName = selected.name
+            snapshotAddress = selected.address
+            snapshotPhone = selected.phone
+            snapshotEmail = selected.email
+            snapshotLogoData = selected.logoData
+        }
+        
         let invoice = InvoiceModel(
             number: invoiceNumber,
             clientName: clientName,
@@ -508,10 +581,18 @@ struct CreateInvoiceView: View {
             dueDate: dueDate,
             taxPercent: taxPercent,
             createdAt: Date(),
-            business: selectedBusiness,
+            business: finalBusinessProfile,
             items: lineItemModels,
             paidAt: nil
         )
+        
+        // Assign snapshot fields and businessProfile
+        invoice.businessProfile = finalBusinessProfile
+        invoice.businessName = snapshotName
+        invoice.businessAddress = snapshotAddress
+        invoice.businessPhone = snapshotPhone
+        invoice.businessEmail = snapshotEmail
+        invoice.businessLogoData = snapshotLogoData
         
         modelContext.insert(invoice)
         
@@ -658,7 +739,7 @@ struct EditInvoiceView: View {
     }
     
     private func loadInvoiceData() {
-        selectedBusiness = invoice.business
+        selectedBusiness = invoice.businessProfile
         clientName = invoice.clientName
         invoiceNumber = invoice.number
         issueDate = invoice.issueDate
@@ -689,7 +770,15 @@ struct EditInvoiceView: View {
         }
         
         // Update invoice properties
-        invoice.business = selectedBusiness
+        if let selected = selectedBusiness {
+            invoice.businessProfile = selected
+            // Update snapshot fields
+            invoice.businessName = selected.name
+            invoice.businessAddress = selected.address
+            invoice.businessPhone = selected.phone
+            invoice.businessEmail = selected.email
+            invoice.businessLogoData = selected.logoData
+        }
         invoice.clientName = clientName
         invoice.number = invoiceNumber
         invoice.issueDate = issueDate
@@ -789,22 +878,22 @@ struct InvoiceDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Business Profile Section
             VStack(alignment: .leading, spacing: 8) {
-                if let business = invoice.business {
-                    Text(business.name)
+                if !invoice.displayBusinessName.isEmpty {
+                    Text(invoice.displayBusinessName)
                         .font(.headline)
                         .foregroundColor(.primary)
                     
-                    if !business.email.isEmpty {
-                        Text(business.email)
+                    if !invoice.displayBusinessEmail.isEmpty {
+                        Text(invoice.displayBusinessEmail)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
-                    } else if !business.phone.isEmpty {
-                        Text(business.phone)
+                    } else if !invoice.displayBusinessPhone.isEmpty {
+                        Text(invoice.displayBusinessPhone)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
                 } else {
-                    Text("No business selected")
+                    Text("No business information")
                         .font(.headline)
                         .foregroundColor(.secondary)
                 }
@@ -1172,12 +1261,19 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         // Draw "INVOICE" title at top right
         drawText("INVOICE", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: titleFontSize), alignment: .right)
         
-        if let business = invoice.business {
+        // Use snapshot fields first, then fallback to businessProfile
+        let businessName = invoice.displayBusinessName
+        let businessAddress = invoice.displayBusinessAddress
+        let businessPhone = invoice.displayBusinessPhone
+        let businessEmail = invoice.displayBusinessEmail
+        let businessLogoData = invoice.displayBusinessLogoData
+        
+        if !businessName.isEmpty {
             let lineHeight = headerFontSize + 4
             var logoHeight: CGFloat = 0
             
             // Draw logo if exists
-            if let logoData = business.logoData, let logoImage = UIImage(data: logoData) {
+            if let logoData = businessLogoData, let logoImage = UIImage(data: logoData) {
                 let maxLogoSize: CGFloat = 80
                 let aspectRatio = logoImage.size.width / logoImage.size.height
                 let logoWidth: CGFloat
@@ -1204,21 +1300,21 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
             
             // Calculate text height
             var textLines = 1 // business name
-            if !business.address.isEmpty { textLines += 1 }
-            if !business.phone.isEmpty { textLines += 1 }
-            if !business.email.isEmpty { textLines += 1 }
+            if !businessAddress.isEmpty { textLines += 1 }
+            if !businessPhone.isEmpty { textLines += 1 }
+            if !businessEmail.isEmpty { textLines += 1 }
             let textHeight = headerFontSize + CGFloat(textLines - 1) * lineHeight
             
             // Draw business info
-            drawText(business.name, at: CGPoint(x: businessInfoX, y: businessInfoY), font: .boldSystemFont(ofSize: headerFontSize), width: contentWidth - (businessInfoX - margin))
-            if !business.address.isEmpty {
-                drawText(business.address, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
+            drawText(businessName, at: CGPoint(x: businessInfoX, y: businessInfoY), font: .boldSystemFont(ofSize: headerFontSize), width: contentWidth - (businessInfoX - margin))
+            if !businessAddress.isEmpty {
+                drawText(businessAddress, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
-            if !business.phone.isEmpty {
-                drawText(business.phone, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 2), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
+            if !businessPhone.isEmpty {
+                drawText(businessPhone, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 2), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
-            if !business.email.isEmpty {
-                drawText(business.email, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 3), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
+            if !businessEmail.isEmpty {
+                drawText(businessEmail, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 3), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
             
             headerHeight = max(logoHeight, textHeight)
@@ -1721,20 +1817,40 @@ struct BusinessProfileRow: View {
     let profile: BusinessProfileModel
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(profile.name)
-                .font(.headline)
-                .foregroundColor(.primary)
-            
-            if !profile.email.isEmpty {
-                Text(profile.email)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            } else if !profile.phone.isEmpty {
-                Text(profile.phone)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+        HStack(spacing: 12) {
+            // Logo thumbnail
+            Group {
+                if let logoData = profile.logoData, let uiImage = UIImage(data: logoData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Image(systemName: "building.2.crop.circle")
+                        .foregroundColor(.secondary)
+                }
             }
+            .frame(width: 40, height: 40)
+            .background(Color(.systemGray5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            
+            // Business info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(profile.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                if !profile.email.isEmpty {
+                    Text(profile.email)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else if !profile.phone.isEmpty {
+                    Text(profile.phone)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
         }
         .padding(.vertical, 4)
     }
