@@ -124,6 +124,7 @@ final class InvoiceModel {
     
     // Optional relationship (no annotations - manually managed)
     var businessProfile: BusinessProfileModel?
+    var clientRef: ClientModel?
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
@@ -458,6 +459,7 @@ struct CreateInvoiceView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
+    @Query(sort: \ClientModel.name) private var clients: [ClientModel]
     
     let nextInvoiceNumber: String
     
@@ -467,6 +469,13 @@ struct CreateInvoiceView: View {
     @State private var manualBusinessAddress = ""
     @State private var manualBusinessPhone = ""
     @State private var manualBusinessEmail = ""
+    @State private var selectedClient: ClientModel?
+    @State private var useManualClientEntry = false
+    @State private var manualClientName = ""
+    @State private var manualClientAddress = ""
+    @State private var manualClientPhone = ""
+    @State private var manualClientEmail = ""
+    @State private var manualClientTaxId = ""
     @State private var clientName = ""
     @State private var clientAddress = ""
     @State private var clientPhone = ""
@@ -479,6 +488,7 @@ struct CreateInvoiceView: View {
     @State private var lineItems: [LineItemData] = [LineItemData(title: "", qty: 1, price: 0.0)]
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
+    @State private var showCreateClient = false
     
     private let currencies: [(code: String, symbol: String)] = [
         ("USD", "$"),
@@ -528,15 +538,46 @@ struct CreateInvoiceView: View {
                     .buttonStyle(.bordered)
                 }
                 
-                Section("Client Information") {
-                    TextField("Client Name", text: $clientName)
-                    TextField("Address (optional)", text: $clientAddress)
-                    TextField("Phone (optional)", text: $clientPhone)
-                        .keyboardType(.phonePad)
-                    TextField("Email (optional)", text: $clientEmail)
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                    TextField("Tax ID (optional)", text: $clientTaxId)
+                Section("Client") {
+                    Picker("Client Entry Mode", selection: $useManualClientEntry) {
+                        Text("Select Existing Client").tag(false)
+                        Text("Enter Manually").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    if useManualClientEntry {
+                        TextField("Client Name", text: $manualClientName)
+                        TextField("Address (optional)", text: $manualClientAddress)
+                        TextField("Phone (optional)", text: $manualClientPhone)
+                            .keyboardType(.phonePad)
+                        TextField("Email (optional)", text: $manualClientEmail)
+                            .keyboardType(.emailAddress)
+                            .autocapitalization(.none)
+                        TextField("Tax ID (optional)", text: $manualClientTaxId)
+                    } else {
+                        if clients.isEmpty {
+                            VStack(spacing: 12) {
+                                Text("No clients found. Switch to 'Enter Manually' or create a client.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        } else {
+                            Picker("Client", selection: $selectedClient) {
+                                Text("Select Client").tag(nil as ClientModel?)
+                                ForEach(clients) { client in
+                                    Text(client.name).tag(client as ClientModel?)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Button("Add Client") {
+                        showCreateClient = true
+                    }
+                    .buttonStyle(.bordered)
                 }
                 
                 Section("Invoice Information") {
@@ -611,13 +652,19 @@ struct CreateInvoiceView: View {
                     selectedBusiness = newProfile
                 }
             }
+            .sheet(isPresented: $showCreateClient) {
+                CreateClientView { newClient in
+                    selectedClient = newClient
+                }
+            }
         }
     }
     
     private var isValid: Bool {
         let hasBusiness = useManualEntry ? !manualBusinessName.trimmingCharacters(in: .whitespaces).isEmpty : selectedBusiness != nil
+        let hasClient = useManualClientEntry ? !manualClientName.trimmingCharacters(in: .whitespaces).isEmpty : selectedClient != nil
         return hasBusiness &&
-        !clientName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        hasClient &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
         lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 && $0.price > 0 }
     }
@@ -660,9 +707,46 @@ struct CreateInvoiceView: View {
             snapshotLogoData = selected.logoData
         }
         
+        // Handle client selection/manual entry
+        var finalClient: ClientModel?
+        var clientSnapshotName = ""
+        var clientSnapshotAddress = ""
+        var clientSnapshotPhone = ""
+        var clientSnapshotEmail = ""
+        var clientSnapshotTaxId = ""
+        
+        if useManualClientEntry {
+            // Create new client from manual entry
+            let newClient = ClientModel(
+                name: manualClientName,
+                address: manualClientAddress,
+                phone: manualClientPhone,
+                email: manualClientEmail,
+                taxId: manualClientTaxId,
+                logoData: nil
+            )
+            modelContext.insert(newClient)
+            finalClient = newClient
+            
+            // Copy to snapshot
+            clientSnapshotName = manualClientName
+            clientSnapshotAddress = manualClientAddress
+            clientSnapshotPhone = manualClientPhone
+            clientSnapshotEmail = manualClientEmail
+            clientSnapshotTaxId = manualClientTaxId
+        } else if let selected = selectedClient {
+            // Use selected client - copy to snapshot
+            finalClient = selected
+            clientSnapshotName = selected.name
+            clientSnapshotAddress = selected.address
+            clientSnapshotPhone = selected.phone
+            clientSnapshotEmail = selected.email
+            clientSnapshotTaxId = selected.taxId
+        }
+        
         let invoice = InvoiceModel(
             number: invoiceNumber,
-            clientName: clientName,
+            clientName: clientSnapshotName,
             statusRaw: "Unpaid",
             issueDate: issueDate,
             dueDate: dueDate,
@@ -675,10 +759,11 @@ struct CreateInvoiceView: View {
         )
         
         // Assign snapshot fields
-        invoice.clientAddress = clientAddress
-        invoice.clientPhone = clientPhone
-        invoice.clientEmail = clientEmail
-        invoice.clientTaxId = clientTaxId
+        invoice.clientRef = finalClient
+        invoice.clientAddress = clientSnapshotAddress
+        invoice.clientPhone = clientSnapshotPhone
+        invoice.clientEmail = clientSnapshotEmail
+        invoice.clientTaxId = clientSnapshotTaxId
         invoice.businessProfile = finalBusinessProfile
         invoice.businessName = snapshotName
         invoice.businessAddress = snapshotAddress
@@ -702,10 +787,18 @@ struct EditInvoiceView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
+    @Query(sort: \ClientModel.name) private var clients: [ClientModel]
     
     let invoice: InvoiceModel
     
     @State private var selectedBusiness: BusinessProfileModel?
+    @State private var selectedClient: ClientModel?
+    @State private var useManualClientEntry = false
+    @State private var manualClientName = ""
+    @State private var manualClientAddress = ""
+    @State private var manualClientPhone = ""
+    @State private var manualClientEmail = ""
+    @State private var manualClientTaxId = ""
     @State private var clientName = ""
     @State private var clientAddress = ""
     @State private var clientPhone = ""
@@ -718,6 +811,7 @@ struct EditInvoiceView: View {
     @State private var lineItems: [LineItemData] = []
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
+    @State private var showCreateClient = false
     
     private let currencies: [(code: String, symbol: String)] = [
         ("USD", "$"),
@@ -767,15 +861,46 @@ struct EditInvoiceView: View {
                     .buttonStyle(.bordered)
                 }
                 
-                Section("Client Information") {
-                    TextField("Client Name", text: $clientName)
-                    TextField("Address (optional)", text: $clientAddress)
-                    TextField("Phone (optional)", text: $clientPhone)
-                        .keyboardType(.phonePad)
-                    TextField("Email (optional)", text: $clientEmail)
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                    TextField("Tax ID (optional)", text: $clientTaxId)
+                Section("Client") {
+                    Picker("Client Entry Mode", selection: $useManualClientEntry) {
+                        Text("Select Existing Client").tag(false)
+                        Text("Enter Manually").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    if useManualClientEntry {
+                        TextField("Client Name", text: $manualClientName)
+                        TextField("Address (optional)", text: $manualClientAddress)
+                        TextField("Phone (optional)", text: $manualClientPhone)
+                            .keyboardType(.phonePad)
+                        TextField("Email (optional)", text: $manualClientEmail)
+                            .keyboardType(.emailAddress)
+                            .autocapitalization(.none)
+                        TextField("Tax ID (optional)", text: $manualClientTaxId)
+                    } else {
+                        if clients.isEmpty {
+                            VStack(spacing: 12) {
+                                Text("No clients found. Switch to 'Enter Manually' or create a client.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        } else {
+                            Picker("Client", selection: $selectedClient) {
+                                Text("Select Client").tag(nil as ClientModel?)
+                                ForEach(clients) { client in
+                                    Text(client.name).tag(client as ClientModel?)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Button("Add Client") {
+                        showCreateClient = true
+                    }
+                    .buttonStyle(.bordered)
                 }
                 
                 Section("Invoice Information") {
@@ -850,23 +975,45 @@ struct EditInvoiceView: View {
                     selectedBusiness = newProfile
                 }
             }
+            .sheet(isPresented: $showCreateClient) {
+                CreateClientView { newClient in
+                    selectedClient = newClient
+                }
+            }
         }
     }
     
     private var isValid: Bool {
-        selectedBusiness != nil &&
-        !clientName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        let hasClient = useManualClientEntry ? !manualClientName.trimmingCharacters(in: .whitespaces).isEmpty : selectedClient != nil
+        return selectedBusiness != nil &&
+        hasClient &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
         lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 && $0.price > 0 }
     }
     
     private func loadInvoiceData() {
         selectedBusiness = invoice.businessProfile
-        clientName = invoice.clientName
-        clientAddress = invoice.clientAddress
-        clientPhone = invoice.clientPhone
-        clientEmail = invoice.clientEmail
-        clientTaxId = invoice.clientTaxId
+        
+        // Load client data
+        if let clientRef = invoice.clientRef {
+            // Invoice has a client reference - use it
+            selectedClient = clientRef
+            useManualClientEntry = false
+            clientName = invoice.clientName
+            clientAddress = invoice.clientAddress
+            clientPhone = invoice.clientPhone
+            clientEmail = invoice.clientEmail
+            clientTaxId = invoice.clientTaxId
+        } else {
+            // No client reference - use manual entry mode with snapshot data
+            useManualClientEntry = true
+            manualClientName = invoice.clientName
+            manualClientAddress = invoice.clientAddress
+            manualClientPhone = invoice.clientPhone
+            manualClientEmail = invoice.clientEmail
+            manualClientTaxId = invoice.clientTaxId
+        }
+        
         invoiceNumber = invoice.number
         currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
         issueDate = invoice.issueDate
@@ -896,7 +1043,7 @@ struct EditInvoiceView: View {
             LineItemModel(title: item.title, qty: item.qty, price: item.price)
         }
         
-        // Update invoice properties
+        // Update business properties
         if let selected = selectedBusiness {
             invoice.businessProfile = selected
             // Update snapshot fields
@@ -906,11 +1053,37 @@ struct EditInvoiceView: View {
             invoice.businessEmail = selected.email
             invoice.businessLogoData = selected.logoData
         }
-        invoice.clientName = clientName
-        invoice.clientAddress = clientAddress
-        invoice.clientPhone = clientPhone
-        invoice.clientEmail = clientEmail
-        invoice.clientTaxId = clientTaxId
+        
+        // Handle client selection/manual entry
+        if useManualClientEntry {
+            // Create new client from manual entry
+            let newClient = ClientModel(
+                name: manualClientName,
+                address: manualClientAddress,
+                phone: manualClientPhone,
+                email: manualClientEmail,
+                taxId: manualClientTaxId,
+                logoData: nil
+            )
+            modelContext.insert(newClient)
+            invoice.clientRef = newClient
+            
+            // Copy to snapshot
+            invoice.clientName = manualClientName
+            invoice.clientAddress = manualClientAddress
+            invoice.clientPhone = manualClientPhone
+            invoice.clientEmail = manualClientEmail
+            invoice.clientTaxId = manualClientTaxId
+        } else if let selected = selectedClient {
+            // Use selected client - copy to snapshot
+            invoice.clientRef = selected
+            invoice.clientName = selected.name
+            invoice.clientAddress = selected.address
+            invoice.clientPhone = selected.phone
+            invoice.clientEmail = selected.email
+            invoice.clientTaxId = selected.taxId
+        }
+        
         invoice.number = invoiceNumber
         invoice.currencyCode = currencyCode
         invoice.issueDate = issueDate
@@ -1799,6 +1972,8 @@ struct CreateClientView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
     
+    var onSave: ((ClientModel) -> Void)?
+    
     @State private var name = ""
     @State private var address = ""
     @State private var phone = ""
@@ -2054,7 +2229,19 @@ struct ClientsView: View {
     private func deleteClients(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(clients[index])
+                let clientToDelete = clients[index]
+                
+                // Find all invoices referencing this client and set clientRef to nil
+                let descriptor = FetchDescriptor<InvoiceModel>()
+                if let allInvoices = try? modelContext.fetch(descriptor) {
+                    for invoice in allInvoices {
+                        if invoice.clientRef == clientToDelete {
+                            invoice.clientRef = nil
+                        }
+                    }
+                }
+                
+                modelContext.delete(clientToDelete)
             }
         }
         
