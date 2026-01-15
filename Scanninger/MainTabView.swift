@@ -666,7 +666,7 @@ struct CreateInvoiceView: View {
         return hasBusiness &&
         hasClient &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
-        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 && $0.price > 0 }
+        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 }
     }
     
     private func saveInvoice() {
@@ -988,7 +988,7 @@ struct EditInvoiceView: View {
         return selectedBusiness != nil &&
         hasClient &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
-        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 && $0.price > 0 }
+        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 }
     }
     
     private func loadInvoiceData() {
@@ -1752,6 +1752,37 @@ struct ShareItem: Identifiable {
 }
 
 
+// MARK: - Logo Preview View
+struct LogoPreviewView: View {
+    let logoData: Data?
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                if let logoData = logoData, let uiImage = UIImage(data: logoData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding()
+                }
+            }
+            .navigationTitle("Logo Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Create Business Profile View
 struct CreateBusinessProfileView: View {
     @Environment(\.dismiss) var dismiss
@@ -1765,6 +1796,7 @@ struct CreateBusinessProfileView: View {
     @State private var email = ""
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showLogoPreview = false
     
     init(onSave: ((BusinessProfileModel) -> Void)? = nil) {
         self.onSave = onSave
@@ -1776,11 +1808,16 @@ struct CreateBusinessProfileView: View {
                 Section("Logo") {
                     if let logoData = logoData, let uiImage = UIImage(data: logoData) {
                         HStack {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 80, height: 80)
-                                .cornerRadius(8)
+                            Button {
+                                showLogoPreview = true
+                            } label: {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 80, height: 80)
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
                             
                             Spacer()
                             
@@ -1819,6 +1856,9 @@ struct CreateBusinessProfileView: View {
                 }
             }
             .navigationTitle("New Business Profile")
+            .sheet(isPresented: $showLogoPreview) {
+                LogoPreviewView(logoData: logoData)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -1876,6 +1916,7 @@ struct EditBusinessProfileView: View {
     @State private var email: String
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showLogoPreview = false
     
     init(business: BusinessProfileModel) {
         self.business = business
@@ -1892,11 +1933,16 @@ struct EditBusinessProfileView: View {
                 Section("Logo") {
                     if let logoData = logoData, let uiImage = UIImage(data: logoData) {
                         HStack {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 80, height: 80)
-                                .cornerRadius(8)
+                            Button {
+                                showLogoPreview = true
+                            } label: {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 80, height: 80)
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
                             
                             Spacer()
                             
@@ -1935,6 +1981,9 @@ struct EditBusinessProfileView: View {
                 }
             }
             .navigationTitle("Edit Business Profile")
+            .sheet(isPresented: $showLogoPreview) {
+                LogoPreviewView(logoData: logoData)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
@@ -1981,6 +2030,7 @@ struct CreateClientView: View {
     @State private var taxId = ""
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showLogoPreview = false
     
     var body: some View {
         NavigationStack {
@@ -1988,11 +2038,16 @@ struct CreateClientView: View {
                 Section("Logo") {
                     if let logoData = logoData, let uiImage = UIImage(data: logoData) {
                         HStack {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 80, height: 80)
-                                .cornerRadius(8)
+                            Button {
+                                showLogoPreview = true
+                            } label: {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 80, height: 80)
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
                             
                             Spacer()
                             
@@ -2032,6 +2087,9 @@ struct CreateClientView: View {
                 }
             }
             .navigationTitle("New Client")
+            .sheet(isPresented: $showLogoPreview) {
+                LogoPreviewView(logoData: logoData)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -2088,6 +2146,7 @@ struct EditClientView: View {
     @State private var taxId: String
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showLogoPreview = false
     
     init(client: ClientModel) {
         self.client = client
@@ -2105,11 +2164,16 @@ struct EditClientView: View {
                 Section("Logo") {
                     if let logoData = logoData, let uiImage = UIImage(data: logoData) {
                         HStack {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 80, height: 80)
-                                .cornerRadius(8)
+                            Button {
+                                showLogoPreview = true
+                            } label: {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 80, height: 80)
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
                             
                             Spacer()
                             
@@ -2149,6 +2213,9 @@ struct EditClientView: View {
                 }
             }
             .navigationTitle("Edit Client")
+            .sheet(isPresented: $showLogoPreview) {
+                LogoPreviewView(logoData: logoData)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
