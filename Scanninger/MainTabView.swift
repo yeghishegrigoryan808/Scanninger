@@ -2559,24 +2559,36 @@ struct ClientsView: View {
     @Query(sort: \ClientModel.name) private var clients: [ClientModel]
     @Environment(\.modelContext) private var modelContext
     
+    @State private var searchText = ""
     @State private var showCreateClient = false
     @State private var selectedClient: ClientModel?
     @State private var clientToDelete: ClientModel?
     @State private var showDeleteConfirmation = false
     
+    private var filteredClients: [ClientModel] {
+        if searchText.isEmpty {
+            return clients
+        }
+        return clients.filter { client in
+            client.name.localizedCaseInsensitiveContains(searchText) ||
+            client.email.localizedCaseInsensitiveContains(searchText) ||
+            client.phone.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             Group {
-                if clients.isEmpty {
+                if filteredClients.isEmpty {
                     VStack(spacing: 8) {
-                        Text("No clients yet")
+                        Text(searchText.isEmpty ? "No clients yet" : "No results")
                             .font(.headline)
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        ForEach(clients) { client in
+                        ForEach(filteredClients) { client in
                             NavigationLink(destination: EditClientView(client: client)) {
                                 ClientRow(client: client)
                             }
@@ -2593,6 +2605,7 @@ struct ClientsView: View {
                 }
             }
             .navigationTitle("Clients")
+            .searchable(text: $searchText, prompt: "Search clients…")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -2788,29 +2801,54 @@ struct BusinessProfilesView: View {
     @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
     @Environment(\.modelContext) private var modelContext
     
+    @State private var searchText = ""
     @State private var showCreateBusinessProfile = false
     @State private var selectedBusiness: BusinessProfileModel?
     @State private var businessToDelete: BusinessProfileModel?
     @State private var showDeleteConfirmation = false
     
+    private var filteredBusinessProfiles: [BusinessProfileModel] {
+        if searchText.isEmpty {
+            return businessProfiles
+        }
+        return businessProfiles.filter { profile in
+            profile.name.localizedCaseInsensitiveContains(searchText) ||
+            profile.email.localizedCaseInsensitiveContains(searchText) ||
+            profile.phone.localizedCaseInsensitiveContains(searchText) ||
+            profile.taxId.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(businessProfiles) { profile in
-                    NavigationLink(destination: EditBusinessProfileView(business: profile)) {
-                        BusinessProfileRow(profile: profile)
+            Group {
+                if filteredBusinessProfiles.isEmpty {
+                    VStack(spacing: 8) {
+                        Text(searchText.isEmpty ? "No businesses yet" : "No results")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            businessToDelete = profile
-                            showDeleteConfirmation = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(filteredBusinessProfiles) { profile in
+                            NavigationLink(destination: EditBusinessProfileView(business: profile)) {
+                                BusinessProfileRow(profile: profile)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    businessToDelete = profile
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
             }
             .navigationTitle("My Business")
+            .searchable(text: $searchText, prompt: "Search businesses…")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
