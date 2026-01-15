@@ -24,9 +24,9 @@ struct MainTabView: View {
                     Label("Clients", systemImage: "person.2")
                 }
             
-            ItemsView()
+            BusinessProfilesView()
                 .tabItem {
-                    Label("Items", systemImage: "list.bullet")
+                    Label("My Business", systemImage: "building.2")
                 }
             
             ReportsView()
@@ -36,7 +36,7 @@ struct MainTabView: View {
             
             ProfileView()
                 .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
+                    Label("Settings", systemImage: "gearshape")
                 }
         }
     }
@@ -2724,12 +2724,6 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Business") {
-                    NavigationLink(destination: BusinessProfilesView()) {
-                        Label("Business Profiles", systemImage: "building.2")
-                    }
-                }
-                
                 Section("App") {
                     NavigationLink(destination: LanguageSettingsView()) {
                         Label("Language", systemImage: "globe")
@@ -2765,7 +2759,7 @@ struct ProfileView: View {
                     }
                 }
             }
-            .navigationTitle("Profile")
+            .navigationTitle("Settings")
             .preferredColorScheme(appearanceMode == "system" ? nil : (appearanceMode == "light" ? .light : .dark))
             .alert("Logout", isPresented: $showLogoutAlert) {
                 Button("OK", role: .cancel) { }
@@ -2800,46 +2794,48 @@ struct BusinessProfilesView: View {
     @State private var showDeleteConfirmation = false
     
     var body: some View {
-        List {
-            ForEach(businessProfiles) { profile in
-                NavigationLink(destination: EditBusinessProfileView(business: profile)) {
-                    BusinessProfileRow(profile: profile)
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button(role: .destructive) {
-                        businessToDelete = profile
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+        NavigationStack {
+            List {
+                ForEach(businessProfiles) { profile in
+                    NavigationLink(destination: EditBusinessProfileView(business: profile)) {
+                        BusinessProfileRow(profile: profile)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            businessToDelete = profile
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 }
             }
-        }
-        .navigationTitle("Business Profiles")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showCreateBusinessProfile = true
-                } label: {
-                    Image(systemName: "plus")
+            .navigationTitle("My Business")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showCreateBusinessProfile = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $showCreateBusinessProfile) {
-            CreateBusinessProfileView()
-        }
-        .alert("Delete?", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {
-                businessToDelete = nil
+            .sheet(isPresented: $showCreateBusinessProfile) {
+                CreateBusinessProfileView()
             }
-            Button("Delete", role: .destructive) {
-                if let business = businessToDelete {
-                    deleteBusinessProfile(business)
+            .alert("Delete?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    businessToDelete = nil
                 }
-                businessToDelete = nil
+                Button("Delete", role: .destructive) {
+                    if let business = businessToDelete {
+                        deleteBusinessProfile(business)
+                    }
+                    businessToDelete = nil
+                }
+            } message: {
+                Text("This cannot be undone.")
             }
-        } message: {
-            Text("This cannot be undone.")
         }
     }
     
