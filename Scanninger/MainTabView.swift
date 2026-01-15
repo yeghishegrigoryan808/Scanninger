@@ -10,6 +10,7 @@ import SwiftData
 import UIKit
 import PDFKit
 import PhotosUI
+import Charts
 
 struct MainTabView: View {
     var body: some View {
@@ -440,9 +441,7 @@ struct InvoicesView: View {
                 }
             }
             .sheet(isPresented: $showCreateInvoice) {
-                CreateInvoiceView(
-                    nextInvoiceNumber: generateNextInvoiceNumber()
-                )
+                CreateInvoiceView()
             }
             .sheet(isPresented: $showEditInvoice) {
                 if let invoice = invoiceToEdit {
@@ -643,8 +642,7 @@ struct CreateInvoiceView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
     @Query(sort: \ClientModel.name) private var clients: [ClientModel]
-    
-    let nextInvoiceNumber: String
+    @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
     
     @State private var selectedBusiness: BusinessProfileModel?
     @State private var useManualEntry = false
@@ -679,7 +677,8 @@ struct CreateInvoiceView: View {
     ]
     
     private var subtotal: Double {
-        lineItems.reduce(0) { $0 + (Double($1.qty) * $1.price) }
+        guard !lineItems.isEmpty else { return 0 }
+        return lineItems.reduce(0) { $0 + (Double($1.qty) * $1.price) }
     }
     
     private var taxAmount: Double {
@@ -772,12 +771,16 @@ struct CreateInvoiceView: View {
                 
                 Section("Line Items") {
                     ForEach(Array(lineItems.enumerated()), id: \.element.id) { index, item in
-                        LineItemRow(item: Binding(
-                            get: { lineItems[index] },
-                            set: { lineItems[index] = $0 }
-                        ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
-                            lineItems.remove(at: index)
-                        })
+                        if index < lineItems.count {
+                            LineItemRow(item: Binding(
+                                get: { lineItems[index] },
+                                set: { lineItems[index] = $0 }
+                            ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
+                                if lineItems.count > 1 {
+                                    lineItems.remove(at: index)
+                                }
+                            })
+                        }
                     }
                     
                     Menu {
@@ -851,7 +854,10 @@ struct CreateInvoiceView: View {
                 }
             }
             .onAppear {
-                invoiceNumber = nextInvoiceNumber
+                // Ensure lineItems always has at least one item
+                if lineItems.isEmpty {
+                    lineItems = [LineItemData()]
+                }
             }
             .sheet(isPresented: $showCreateBusinessProfile) {
                 CreateBusinessProfileView { newProfile in
@@ -874,11 +880,26 @@ struct CreateInvoiceView: View {
         let hasClient = selectedClient != nil
         return hasBusiness &&
         hasClient &&
-        !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
         lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 }
     }
     
+    private func generateNextInvoiceNumber() -> String {
+        let maxNumber = allInvoices.compactMap { invoice -> Int? in
+            let components = invoice.number.components(separatedBy: "-")
+            if components.count == 2, let number = Int(components[1]) {
+                return number
+            }
+            return nil
+        }.max() ?? 0
+        
+        let nextNumber = maxNumber + 1
+        return String(format: "INV-%04d", nextNumber)
+    }
+    
     private func saveInvoice() {
+        // Generate invoice number only when saving
+        let finalInvoiceNumber = invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty ? generateNextInvoiceNumber() : invoiceNumber
+        
         let lineItemModels = lineItems.map { item in
             LineItemModel(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit)
         }
@@ -938,7 +959,7 @@ struct CreateInvoiceView: View {
         }
         
         let invoice = InvoiceModel(
-            number: invoiceNumber,
+            number: finalInvoiceNumber,
             clientName: clientSnapshotName,
             statusRaw: "Unpaid",
             issueDate: issueDate,
@@ -2716,15 +2737,533 @@ struct ItemsView: View {
 }
 
 struct ReportsView: View {
+    @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
+    
+    @State private var selectedPeriod: ReportPeriod = .thisMonth
+    @State private var showCustomRangePicker = false
+    @State private var customStartDate = Date()
+    @State private var customEndDate = Date()
+    @State private var selectedClient: String?
+    @State private var showClientInvoices = false
+    @State private var showPaidInvoices = false
+    @State private var showUnpaidInvoices = false
+    
+    enum ReportPeriod {
+        case thisMonth
+        case lastMonth
+        case customRange
+    }
+    
+    private var periodStart: Date {
+        let calendar = Calendar.current
+        switch selectedPeriod {
+        case .thisMonth:
+            return calendar.dateInterval(of: .month, for: Date())?.start ?? Date()
+        case .lastMonth:
+            let lastMonth = calendar.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+            return calendar.dateInterval(of: .month, for: lastMonth)?.start ?? Date()
+        case .customRange:
+            return customStartDate
+        }
+    }
+    
+    private var periodEnd: Date {
+        let calendar = Calendar.current
+        switch selectedPeriod {
+        case .thisMonth:
+            return calendar.dateInterval(of: .month, for: Date())?.end ?? Date()
+        case .lastMonth:
+            let lastMonth = calendar.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+            return calendar.dateInterval(of: .month, for: lastMonth)?.end ?? Date()
+        case .customRange:
+            return customEndDate
+        }
+    }
+    
+    private func filteredInvoices(for period: (start: Date, end: Date)) -> [InvoiceModel] {
+        allInvoices.filter { invoice in
+            invoice.issueDate >= period.start && invoice.issueDate <= period.end
+        }
+    }
+    
+    private func invoiceTotal(_ invoice: InvoiceModel) -> Double {
+        invoice.total
+    }
+    
+    private func formatMoney(_ amount: Double, currencyCode: String) -> String {
+        formatCurrency(amount, currencyCode: currencyCode)
+    }
+    
+    private var currentPeriodInvoices: [InvoiceModel] {
+        filteredInvoices(for: (start: periodStart, end: periodEnd))
+    }
+    
+    private var totalRevenue: Double {
+        currentPeriodInvoices.reduce(0) { $0 + invoiceTotal($1) }
+    }
+    
+    private var paidRevenue: Double {
+        currentPeriodInvoices.filter { $0.paidAt != nil }.reduce(0) { $0 + invoiceTotal($1) }
+    }
+    
+    private var unpaidRevenue: Double {
+        currentPeriodInvoices.filter { $0.paidAt == nil }.reduce(0) { $0 + invoiceTotal($1) }
+    }
+    
+    private var paidCount: Int {
+        currentPeriodInvoices.filter { $0.paidAt != nil }.count
+    }
+    
+    private var unpaidCount: Int {
+        currentPeriodInvoices.filter { $0.paidAt == nil }.count
+    }
+    
+    private var revenueByClient: [(name: String, total: Double, count: Int)] {
+        let grouped = Dictionary(grouping: currentPeriodInvoices) { $0.clientName }
+        return grouped.map { (name, invoices) in
+            let total = invoices.reduce(0.0) { $0 + invoiceTotal($1) }
+            return (name: name, total: total, count: invoices.count)
+        }
+        .sorted { $0.total > $1.total }
+    }
+    
+    private var monthlyRevenueData: [(month: String, revenue: Double)] {
+        let calendar = Calendar.current
+        var data: [(month: String, revenue: Double)] = []
+        
+        for i in 0..<6 {
+            guard let monthDate = calendar.date(byAdding: .month, value: -i, to: Date()),
+                  let monthStart = calendar.dateInterval(of: .month, for: monthDate)?.start,
+                  let monthEnd = calendar.dateInterval(of: .month, for: monthDate)?.end else {
+                continue
+            }
+            
+            let monthInvoices = filteredInvoices(for: (start: monthStart, end: monthEnd))
+            let revenue = monthInvoices.reduce(0.0) { $0 + invoiceTotal($1) }
+            
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM yyyy"
+            let monthName = formatter.string(from: monthDate)
+            
+            data.append((month: monthName, revenue: revenue))
+        }
+        
+        return data.reversed()
+    }
+    
+    private var primaryCurrencyCode: String {
+        let currencies = Set(currentPeriodInvoices.map { $0.currencyCode.isEmpty ? "USD" : $0.currencyCode })
+        return currencies.count == 1 ? currencies.first ?? "USD" : "USD"
+    }
+    
+    private var hasMixedCurrencies: Bool {
+        let currencies = Set(currentPeriodInvoices.map { $0.currencyCode.isEmpty ? "USD" : $0.currencyCode })
+        return currencies.count > 1
+    }
+    
     var body: some View {
         NavigationStack {
-            VStack(spacing: 8) {
-                Text("No reports yet")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
+            ScrollView {
+                VStack(spacing: 20) {
+                    if allInvoices.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "chart.bar.doc.horizontal")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary)
+                            Text("No reports yet")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                            Text("Create invoices to see reports")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.top, 100)
+                    } else {
+                        // Period Selector
+                        VStack(spacing: 16) {
+                            Picker("Period", selection: $selectedPeriod) {
+                                Text("This Month").tag(ReportPeriod.thisMonth)
+                                Text("Last Month").tag(ReportPeriod.lastMonth)
+                                Text("Custom Range").tag(ReportPeriod.customRange)
+                            }
+                            .pickerStyle(.segmented)
+                            
+                            if selectedPeriod == .customRange {
+                                Button {
+                                    showCustomRangePicker = true
+                                } label: {
+                                    HStack {
+                                        Text("\(formatDate(customStartDate)) - \(formatDate(customEndDate))")
+                                            .foregroundColor(.primary)
+                                        Spacer()
+                                        Image(systemName: "calendar")
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding()
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(10)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        
+                        if currentPeriodInvoices.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "chart.bar.doc.horizontal")
+                                    .font(.system(size: 48))
+                                    .foregroundColor(.secondary)
+                                Text("No data for selected period")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 100)
+                        } else {
+                            // A) Revenue Overview
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Image(systemName: "chart.line.uptrend.xyaxis")
+                                        .foregroundColor(.blue)
+                                    Text("Revenue Overview")
+                                        .font(.headline)
+                                }
+                                
+                                VStack(spacing: 16) {
+                                    // Total Revenue
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Total Revenue")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                        Text(formatMoney(totalRevenue, currencyCode: primaryCurrencyCode))
+                                            .font(.system(size: 32, weight: .bold))
+                                            .foregroundColor(.primary)
+                                    }
+                                    
+                                    HStack(spacing: 12) {
+                                        // Paid Revenue
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Image(systemName: "checkmark.circle")
+                                                    .foregroundColor(.green)
+                                                    .font(.caption)
+                                                Text("Paid")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            Text(formatMoney(paidRevenue, currencyCode: primaryCurrencyCode))
+                                                .font(.headline)
+                                                .foregroundColor(.primary)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding()
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(12)
+                                        
+                                        // Unpaid Revenue
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Image(systemName: "exclamationmark.circle")
+                                                    .foregroundColor(.orange)
+                                                    .font(.caption)
+                                                Text("Unpaid")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            Text(formatMoney(unpaidRevenue, currencyCode: primaryCurrencyCode))
+                                                .font(.headline)
+                                                .foregroundColor(.primary)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding()
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(12)
+                                    }
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                            .padding(.horizontal)
+                            
+                            // B) Paid vs Unpaid Summary
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Summary")
+                                    .font(.headline)
+                                    .padding(.horizontal)
+                                
+                                VStack(spacing: 12) {
+                                    // Paid
+                                    Button {
+                                        showPaidInvoices = true
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                                .font(.title2)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text("Paid Invoices")
+                                                    .font(.headline)
+                                                    .foregroundColor(.primary)
+                                                Text("\(paidCount) invoices • \(formatMoney(paidRevenue, currencyCode: primaryCurrencyCode))")
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .foregroundColor(.secondary)
+                                                .font(.caption)
+                                        }
+                                        .padding()
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(12)
+                                    }
+                                    .buttonStyle(.plain)
+                                    
+                                    // Unpaid
+                                    Button {
+                                        showUnpaidInvoices = true
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "exclamationmark.circle.fill")
+                                                .foregroundColor(.orange)
+                                                .font(.title2)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text("Unpaid Invoices")
+                                                    .font(.headline)
+                                                    .foregroundColor(.primary)
+                                                Text("\(unpaidCount) invoices • \(formatMoney(unpaidRevenue, currencyCode: primaryCurrencyCode))")
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .foregroundColor(.secondary)
+                                                .font(.caption)
+                                        }
+                                        .padding()
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(12)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal)
+                            }
+                            
+                            // C) Revenue by Client
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Image(systemName: "person.2")
+                                        .foregroundColor(.blue)
+                                    Text("Revenue by Client")
+                                        .font(.headline)
+                                }
+                                
+                                if revenueByClient.isEmpty {
+                                    Text("No client data")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .padding()
+                                } else {
+                                    VStack(spacing: 8) {
+                                        ForEach(revenueByClient, id: \.name) { clientData in
+                                            Button {
+                                                selectedClient = clientData.name
+                                                showClientInvoices = true
+                                            } label: {
+                                                HStack {
+                                                    VStack(alignment: .leading, spacing: 4) {
+                                                        Text(clientData.name)
+                                                            .font(.headline)
+                                                            .foregroundColor(.primary)
+                                                        Text("\(clientData.count) invoice\(clientData.count == 1 ? "" : "s")")
+                                                            .font(.caption)
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                    Spacer()
+                                                    VStack(alignment: .trailing, spacing: 4) {
+                                                        Text(formatMoney(clientData.total, currencyCode: primaryCurrencyCode))
+                                                            .font(.headline)
+                                                            .foregroundColor(.primary)
+                                                    }
+                                                    Image(systemName: "chevron.right")
+                                                        .foregroundColor(.secondary)
+                                                        .font(.caption)
+                                                }
+                                                .padding()
+                                                .background(Color(.systemGray6))
+                                                .cornerRadius(12)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                            .padding(.horizontal)
+                            
+                            // D) Monthly Revenue Trend
+                            VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Monthly Revenue Trend")
+                                        .font(.headline)
+                                    Text("Last 6 months")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                if hasMixedCurrencies {
+                                    HStack {
+                                        Image(systemName: "info.circle")
+                                            .foregroundColor(.secondary)
+                                            .font(.caption)
+                                        Text("Chart does not convert currencies.")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.bottom, 4)
+                                }
+                                
+                                Chart {
+                                    ForEach(Array(monthlyRevenueData.enumerated()), id: \.offset) { index, data in
+                                        BarMark(
+                                            x: .value("Month", data.month),
+                                            y: .value("Revenue", data.revenue)
+                                        )
+                                        .foregroundStyle(.blue)
+                                    }
+                                }
+                                .frame(height: 200)
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                            .padding(.horizontal)
+                            .padding(.bottom)
+                        }
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Reports")
+            .sheet(isPresented: $showCustomRangePicker) {
+                CustomRangePickerView(startDate: $customStartDate, endDate: $customEndDate)
+            }
+            .sheet(isPresented: $showClientInvoices) {
+                if let clientName = selectedClient {
+                    FilteredInvoicesView(
+                        invoices: currentPeriodInvoices.filter { $0.clientName == clientName },
+                        title: clientName
+                    )
+                }
+            }
+            .sheet(isPresented: $showPaidInvoices) {
+                FilteredInvoicesView(
+                    invoices: currentPeriodInvoices.filter { $0.paidAt != nil },
+                    title: "Paid Invoices"
+                )
+            }
+            .sheet(isPresented: $showUnpaidInvoices) {
+                FilteredInvoicesView(
+                    invoices: currentPeriodInvoices.filter { $0.paidAt == nil },
+                    title: "Unpaid Invoices"
+                )
+            }
+        }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - Custom Range Picker View
+struct CustomRangePickerView: View {
+    @Environment(\.dismiss) var dismiss
+    @Binding var startDate: Date
+    @Binding var endDate: Date
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Start Date") {
+                    DatePicker("Start", selection: $startDate, displayedComponents: .date)
+                }
+                
+                Section("End Date") {
+                    DatePicker("End", selection: $endDate, displayedComponents: .date)
+                        .onChange(of: startDate) { oldValue, newValue in
+                            if endDate < newValue {
+                                endDate = newValue
+                            }
+                        }
+                }
+            }
+            .navigationTitle("Custom Range")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Filtered Invoices View
+struct FilteredInvoicesView: View {
+    let invoices: [InvoiceModel]
+    let title: String
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            if invoices.isEmpty {
+                VStack(spacing: 12) {
+                    Text("No invoices")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle(title)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                    }
+                }
+            } else {
+                List {
+                    ForEach(invoices) { invoice in
+                        NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
+                            InvoiceRow(invoice: invoice)
+                        }
+                    }
+                }
+                .navigationTitle(title)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -16,8 +16,38 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "479"
             endingLineNumber = "479"
-            landmarkName = "generateNextInvoiceNumber()"
-            landmarkType = "7">
+            landmarkName = "InvoicesView"
+            landmarkType = "14">
+            <Locations>
+               <Location
+                  uuid = "7629A7D7-AD64-4DAA-B137-1B7EB3EA1526 - a204ea597475793"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "Scanninger.InvoicesView.generateNextInvoiceNumber() -&gt; Swift.String"
+                  moduleName = "Scanninger.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/yeghishegrigoryan/Desktop/Scanninger/Scanninger/MainTabView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "479"
+                  endingLineNumber = "479">
+               </Location>
+               <Location
+                  uuid = "7629A7D7-AD64-4DAA-B137-1B7EB3EA1526 - f35c519116b3d3c9"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "Scanninger.InvoicesView.deleteInvoice(Scanninger.InvoiceModel) -&gt; ()"
+                  moduleName = "Scanninger.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/yeghishegrigoryan/Desktop/Scanninger/Scanninger/MainTabView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "481"
+                  endingLineNumber = "481">
+               </Location>
+            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>
