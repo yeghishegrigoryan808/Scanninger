@@ -234,6 +234,8 @@ struct InvoicesView: View {
     @State private var selectedFilter: String? = nil // "Unpaid" or "Paid" or nil for All
     @State private var showCreateInvoice = false
     @State private var selectedInvoice: InvoiceModel?
+    @State private var invoiceToDelete: InvoiceModel?
+    @State private var showDeleteConfirmation = false
     
     private var filteredInvoices: [InvoiceModel] {
         var filtered = allInvoices
@@ -311,8 +313,15 @@ struct InvoicesView: View {
                             NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
                                 InvoiceRow(invoice: invoice)
                             }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    invoiceToDelete = invoice
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
-                        .onDelete(perform: deleteInvoices)
                     }
                     .listStyle(.plain)
                 }
@@ -332,6 +341,19 @@ struct InvoicesView: View {
                     nextInvoiceNumber: generateNextInvoiceNumber()
                 )
             }
+            .alert("Delete?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    invoiceToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let invoice = invoiceToDelete {
+                        deleteInvoice(invoice)
+                    }
+                    invoiceToDelete = nil
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
         }
     }
     
@@ -348,11 +370,9 @@ struct InvoicesView: View {
         return String(format: "INV-%04d", nextNumber)
     }
     
-    private func deleteInvoices(offsets: IndexSet) {
+    private func deleteInvoice(_ invoice: InvoiceModel) {
         withAnimation {
-            for index in offsets {
-                modelContext.delete(filteredInvoices[index])
-            }
+            modelContext.delete(invoice)
         }
         
         do {
@@ -2255,6 +2275,8 @@ struct ClientsView: View {
     
     @State private var showCreateClient = false
     @State private var selectedClient: ClientModel?
+    @State private var clientToDelete: ClientModel?
+    @State private var showDeleteConfirmation = false
     
     var body: some View {
         NavigationStack {
@@ -2272,8 +2294,15 @@ struct ClientsView: View {
                             NavigationLink(destination: EditClientView(client: client)) {
                                 ClientRow(client: client)
                             }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    clientToDelete = client
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
-                        .onDelete(perform: deleteClients)
                     }
                 }
             }
@@ -2290,26 +2319,35 @@ struct ClientsView: View {
             .sheet(isPresented: $showCreateClient) {
                 CreateClientView()
             }
+            .alert("Delete?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    clientToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let client = clientToDelete {
+                        deleteClient(client)
+                    }
+                    clientToDelete = nil
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
         }
     }
     
-    private func deleteClients(offsets: IndexSet) {
+    private func deleteClient(_ client: ClientModel) {
         withAnimation {
-            for index in offsets {
-                let clientToDelete = clients[index]
-                
-                // Find all invoices referencing this client and set clientRef to nil
-                let descriptor = FetchDescriptor<InvoiceModel>()
-                if let allInvoices = try? modelContext.fetch(descriptor) {
-                    for invoice in allInvoices {
-                        if invoice.clientRef == clientToDelete {
-                            invoice.clientRef = nil
-                        }
+            // Find all invoices referencing this client and set clientRef to nil
+            let descriptor = FetchDescriptor<InvoiceModel>()
+            if let allInvoices = try? modelContext.fetch(descriptor) {
+                for invoice in allInvoices {
+                    if invoice.clientRef == client {
+                        invoice.clientRef = nil
                     }
                 }
-                
-                modelContext.delete(clientToDelete)
             }
+            
+            modelContext.delete(client)
         }
         
         do {
@@ -2472,6 +2510,8 @@ struct BusinessProfilesView: View {
     
     @State private var showCreateBusinessProfile = false
     @State private var selectedBusiness: BusinessProfileModel?
+    @State private var businessToDelete: BusinessProfileModel?
+    @State private var showDeleteConfirmation = false
     
     var body: some View {
         List {
@@ -2479,8 +2519,15 @@ struct BusinessProfilesView: View {
                 NavigationLink(destination: EditBusinessProfileView(business: profile)) {
                     BusinessProfileRow(profile: profile)
                 }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        businessToDelete = profile
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
             }
-            .onDelete(perform: deleteBusinessProfiles)
         }
         .navigationTitle("Business Profiles")
         .toolbar {
@@ -2495,25 +2542,34 @@ struct BusinessProfilesView: View {
         .sheet(isPresented: $showCreateBusinessProfile) {
             CreateBusinessProfileView()
         }
+        .alert("Delete?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                businessToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let business = businessToDelete {
+                    deleteBusinessProfile(business)
+                }
+                businessToDelete = nil
+            }
+        } message: {
+            Text("This cannot be undone.")
+        }
     }
     
-    private func deleteBusinessProfiles(offsets: IndexSet) {
+    private func deleteBusinessProfile(_ business: BusinessProfileModel) {
         withAnimation {
-            for index in offsets {
-                let businessToDelete = businessProfiles[index]
-                
-                // Find all invoices referencing this business profile and set businessProfile to nil
-                let descriptor = FetchDescriptor<InvoiceModel>()
-                if let allInvoices = try? modelContext.fetch(descriptor) {
-                    for invoice in allInvoices {
-                        if invoice.businessProfile == businessToDelete {
-                            invoice.businessProfile = nil
-                        }
+            // Find all invoices referencing this business profile and set businessProfile to nil
+            let descriptor = FetchDescriptor<InvoiceModel>()
+            if let allInvoices = try? modelContext.fetch(descriptor) {
+                for invoice in allInvoices {
+                    if invoice.businessProfile == business {
+                        invoice.businessProfile = nil
                     }
                 }
-                
-                modelContext.delete(businessToDelete)
             }
+            
+            modelContext.delete(business)
         }
         
         do {
