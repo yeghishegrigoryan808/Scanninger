@@ -247,6 +247,77 @@ func formatPeriodRange(start: Date, end: Date) -> String {
     return "\(formatter.string(from: start)) – \(formatter.string(from: end))"
 }
 
+// MARK: - Invoice Duplication Helper
+func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allInvoices: [InvoiceModel]) -> InvoiceModel {
+    // Generate next invoice number
+    let maxNumber = allInvoices.compactMap { inv -> Int? in
+        let components = inv.number.components(separatedBy: "-")
+        if components.count == 2, let number = Int(components[1]) {
+            return number
+        }
+        return nil
+    }.max() ?? 0
+    
+    let nextNumber = maxNumber + 1
+    let newInvoiceNumber = String(format: "INV-%04d", nextNumber)
+    
+    // Deep copy line items
+    let newLineItems = (invoice.items ?? []).map { item in
+        LineItemModel(
+            title: item.title,
+            qty: item.qty,
+            price: item.price,
+            details: item.details,
+            unit: item.unit
+        )
+    }
+    
+    // Calculate new due date (7 days from now)
+    let newDueDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+    
+    // Create new invoice with all snapshot fields
+    let newInvoice = InvoiceModel(
+        number: newInvoiceNumber,
+        clientName: invoice.clientName,
+        statusRaw: "Unpaid",
+        issueDate: Date(),
+        dueDate: newDueDate,
+        taxPercent: invoice.taxPercent,
+        createdAt: Date(),
+        business: invoice.businessProfile,
+        items: newLineItems,
+        paidAt: nil,
+        currencyCode: invoice.currencyCode,
+        clientAddress: invoice.clientAddress,
+        clientPhone: invoice.clientPhone,
+        clientEmail: invoice.clientEmail,
+        clientTaxId: invoice.clientTaxId,
+        businessName: invoice.businessName,
+        businessAddress: invoice.businessAddress,
+        businessPhone: invoice.businessPhone,
+        businessEmail: invoice.businessEmail,
+        businessTaxId: invoice.businessTaxId,
+        businessLogoData: invoice.businessLogoData,
+        periodStart: invoice.periodStart,
+        periodEnd: invoice.periodEnd
+    )
+    
+    // Set relationships
+    newInvoice.businessProfile = invoice.businessProfile
+    newInvoice.clientRef = invoice.clientRef
+    
+    // Insert into context
+    modelContext.insert(newInvoice)
+    
+    do {
+        try modelContext.save()
+    } catch {
+        print("Failed to save duplicated invoice: \(error)")
+    }
+    
+    return newInvoice
+}
+
 // MARK: - InvoicesView
 struct InvoicesView: View {
     @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
@@ -258,6 +329,8 @@ struct InvoicesView: View {
     @State private var selectedInvoice: InvoiceModel?
     @State private var invoiceToDelete: InvoiceModel?
     @State private var showDeleteConfirmation = false
+    @State private var invoiceToEdit: InvoiceModel?
+    @State private var showEditInvoice = false
     
     private var filteredInvoices: [InvoiceModel] {
         var filtered = allInvoices
@@ -336,6 +409,14 @@ struct InvoicesView: View {
                                 InvoiceRow(invoice: invoice)
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
+                                    let duplicated = duplicateInvoice(invoice, modelContext: modelContext, allInvoices: allInvoices)
+                                    invoiceToEdit = duplicated
+                                    showEditInvoice = true
+                                } label: {
+                                    Label("Duplicate", systemImage: "doc.on.doc")
+                                }
+                                
                                 Button(role: .destructive) {
                                     invoiceToDelete = invoice
                                     showDeleteConfirmation = true
@@ -362,6 +443,11 @@ struct InvoicesView: View {
                 CreateInvoiceView(
                     nextInvoiceNumber: generateNextInvoiceNumber()
                 )
+            }
+            .sheet(isPresented: $showEditInvoice) {
+                if let invoice = invoiceToEdit {
+                    EditInvoiceView(invoice: invoice)
+                }
             }
             .alert("Delete?", isPresented: $showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {
@@ -403,6 +489,7 @@ struct InvoicesView: View {
             print("Failed to delete invoice: \(error)")
         }
     }
+    
 }
 
 // MARK: - Search Bar
@@ -1313,12 +1400,14 @@ struct InvoiceDetailView: View {
     
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
     
     @State private var shareItem: ShareItem?
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
     @State private var showDeleteConfirmation = false
     @State private var showEditInvoice = false
+    @State private var invoiceToEdit: InvoiceModel?
     @State private var showTemplateSelection = false
     @State private var pdfURL: URL?
     
@@ -1448,13 +1537,31 @@ struct InvoiceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Edit") {
-                    showEditInvoice = true
+                Menu {
+                    Button {
+                        let duplicated = duplicateInvoice(invoice, modelContext: modelContext, allInvoices: allInvoices)
+                        invoiceToEdit = duplicated
+                        showEditInvoice = true
+                    } label: {
+                        Label("Duplicate", systemImage: "doc.on.doc")
+                    }
+                    
+                    Button {
+                        showEditInvoice = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showEditInvoice) {
-            EditInvoiceView(invoice: invoice)
+            if let invoiceToEdit = invoiceToEdit {
+                EditInvoiceView(invoice: invoiceToEdit)
+            } else {
+                EditInvoiceView(invoice: invoice)
+            }
         }
         .sheet(isPresented: $showTemplateSelection) {
             TemplateSelectionView(invoice: invoice) { template in
