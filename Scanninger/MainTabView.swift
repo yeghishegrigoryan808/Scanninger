@@ -216,11 +216,15 @@ final class LineItemModel {
     var title: String
     var qty: Int
     var price: Double
+    var details: String
+    var unit: String
     
-    init(title: String, qty: Int, price: Double) {
+    init(title: String, qty: Int, price: Double, details: String = "", unit: String = "pcs") {
         self.title = title
         self.qty = qty
         self.price = price
+        self.details = details
+        self.unit = unit
     }
     
     var total: Double {
@@ -574,7 +578,7 @@ struct CreateInvoiceView: View {
     @State private var periodStart: Date?
     @State private var periodEnd: Date?
     @State private var showPeriodPicker = false
-    @State private var lineItems: [LineItemData] = [LineItemData(title: "", qty: 1, price: 0.0)]
+    @State private var lineItems: [LineItemData] = [LineItemData()]
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
     @State private var showCreateClient = false
@@ -680,13 +684,40 @@ struct CreateInvoiceView: View {
                 }
                 
                 Section("Line Items") {
-                    ForEach($lineItems) { $item in
-                        LineItemRow(item: $item, currencyCode: currencyCode)
+                    ForEach(Array(lineItems.enumerated()), id: \.element.id) { index, item in
+                        LineItemRow(item: Binding(
+                            get: { lineItems[index] },
+                            set: { lineItems[index] = $0 }
+                        ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
+                            lineItems.remove(at: index)
+                        })
                     }
                     
-                    Button(action: {
-                        lineItems.append(LineItemData(title: "", qty: 1, price: 0.0))
-                    }) {
+                    Menu {
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "pcs"))
+                        } label: {
+                            Label("Product (pcs)", systemImage: "cube")
+                        }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "hours"))
+                        } label: {
+                            Label("Service (hours)", systemImage: "clock")
+                        }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "days"))
+                        } label: {
+                            Label("Service (days)", systemImage: "calendar")
+                        }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "project"))
+                        } label: {
+                            Label("Fixed fee (project)", systemImage: "doc.text")
+                        }
+                    } label: {
                         Label("Add Item", systemImage: "plus.circle")
                     }
                 }
@@ -762,7 +793,7 @@ struct CreateInvoiceView: View {
     
     private func saveInvoice() {
         let lineItemModels = lineItems.map { item in
-            LineItemModel(title: item.title, qty: item.qty, price: item.price)
+            LineItemModel(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit)
         }
         
         var finalBusinessProfile: BusinessProfileModel?
@@ -989,13 +1020,40 @@ struct EditInvoiceView: View {
                 }
                 
                 Section("Line Items") {
-                    ForEach($lineItems) { $item in
-                        LineItemRow(item: $item, currencyCode: currencyCode)
+                    ForEach(Array(lineItems.enumerated()), id: \.element.id) { index, item in
+                        LineItemRow(item: Binding(
+                            get: { lineItems[index] },
+                            set: { lineItems[index] = $0 }
+                        ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
+                            lineItems.remove(at: index)
+                        })
                     }
                     
-                    Button(action: {
-                        lineItems.append(LineItemData(title: "", qty: 1, price: 0.0))
-                    }) {
+                    Menu {
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "pcs"))
+                        } label: {
+                            Label("Product (pcs)", systemImage: "cube")
+                        }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "hours"))
+                        } label: {
+                            Label("Service (hours)", systemImage: "clock")
+                        }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "days"))
+                        } label: {
+                            Label("Service (days)", systemImage: "calendar")
+                        }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "project"))
+                        } label: {
+                            Label("Fixed fee (project)", systemImage: "doc.text")
+                        }
+                    } label: {
                         Label("Add Item", systemImage: "plus.circle")
                     }
                 }
@@ -1084,10 +1142,10 @@ struct EditInvoiceView: View {
         // Load line items
         if let items = invoice.items {
             lineItems = items.map { item in
-                LineItemData(title: item.title, qty: item.qty, price: item.price)
+                LineItemData(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit.isEmpty ? "pcs" : item.unit)
             }
         } else {
-            lineItems = [LineItemData(title: "", qty: 1, price: 0.0)]
+            lineItems = [LineItemData()]
         }
     }
     
@@ -1101,7 +1159,7 @@ struct EditInvoiceView: View {
         
         // Create new line items
         let newLineItems = lineItems.map { item in
-            LineItemModel(title: item.title, qty: item.qty, price: item.price)
+            LineItemModel(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit)
         }
         
         // Update business properties
@@ -1151,46 +1209,101 @@ struct LineItemData: Identifiable {
     var title: String
     var qty: Int
     var price: Double
+    var details: String
+    var unit: String
+    
+    init(title: String = "", qty: Int = 1, price: Double = 0.0, details: String = "", unit: String = "pcs") {
+        self.title = title
+        self.qty = qty
+        self.price = price
+        self.details = details
+        self.unit = unit
+    }
 }
 
 // MARK: - Line Item Row
 struct LineItemRow: View {
     @Binding var item: LineItemData
     var currencyCode: String
+    var canDelete: Bool
+    var onDelete: () -> Void
     
     private var itemTotal: Double {
         Double(item.qty) * item.price
     }
     
     var body: some View {
-        VStack(spacing: 8) {
-            TextField("Description", text: $item.title)
+        VStack(alignment: .leading, spacing: 12) {
+            // Row 1: Item title
+            TextField("Item name", text: $item.title)
+                .onChange(of: item.title) { oldValue, newValue in
+                    if newValue.count > 50 {
+                        item.title = String(newValue.prefix(50))
+                    }
+                }
             
-            HStack {
-                Text("Qty:")
-                    .foregroundColor(.secondary)
-                TextField("1", value: $item.qty, format: .number)
-                    .keyboardType(.numberPad)
-                    .frame(width: 60)
+            // Row 2: Qty, Unit, Rate in columns
+            HStack(alignment: .top, spacing: 16) {
+                // Column A: Qty
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Qty")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    TextField("1", value: $item.qty, format: .number)
+                        .keyboardType(.numberPad)
+                }
+                .frame(maxWidth: .infinity)
                 
-                Spacer()
+                // Column B: Unit
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Unit")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    TextField("pcs", text: $item.unit)
+                }
+                .frame(maxWidth: .infinity)
                 
-                Text("Price:")
-                    .foregroundColor(.secondary)
-                TextField("0.00", value: $item.price, format: .number)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 100)
+                // Column C: Rate
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Rate")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    TextField("0.00", value: $item.price, format: .number)
+                        .keyboardType(.decimalPad)
+                }
+                .frame(maxWidth: .infinity)
             }
             
+            // Row 3: Details
+            TextField("Details (optional)", text: $item.details, axis: .vertical)
+                .lineLimit(2...4)
+                .onChange(of: item.details) { oldValue, newValue in
+                    if newValue.count > 150 {
+                        item.details = String(newValue.prefix(150))
+                    }
+                }
+            
+            // Row 4: Total and Delete
             HStack {
+                if canDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
+                }
                 Spacer()
                 Text("Total: \(formatCurrency(itemTotal, currencyCode: currencyCode))")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 }
 
@@ -1744,11 +1857,18 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         let items = invoice.items ?? []
         for item in items {
             let itemTotal = Double(item.qty) * item.price
+            let qtyText = item.unit.isEmpty ? "\(item.qty)" : "\(item.qty) \(item.unit)"
             drawText(item.title, at: CGPoint(x: margin, y: yPosition), font: detailFont, width: itemColumnWidth)
-            drawText("\(item.qty)", at: CGPoint(x: margin + itemColumnWidth, y: yPosition), font: detailFont, width: qtyColumnWidth)
+            drawText(qtyText, at: CGPoint(x: margin + itemColumnWidth, y: yPosition), font: detailFont, width: qtyColumnWidth)
             drawText(formatCurrency(item.price, currencyCode: currencyCode), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth, y: yPosition), font: detailFont, width: priceColumnWidth)
             drawText(formatCurrency(itemTotal, currencyCode: currencyCode), at: CGPoint(x: margin + itemColumnWidth + qtyColumnWidth + priceColumnWidth, y: yPosition), font: detailFont, width: totalColumnWidth)
             yPosition += spacing
+            
+            // Draw details if available
+            if !item.details.isEmpty {
+                drawText(item.details, at: CGPoint(x: margin, y: yPosition), font: .systemFont(ofSize: bodyFontSize - 2), width: itemColumnWidth)
+                yPosition += spacing * 0.7
+            }
         }
         
         yPosition += spacing
