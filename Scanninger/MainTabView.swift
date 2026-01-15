@@ -57,15 +57,17 @@ final class BusinessProfileModel {
     var address: String
     var phone: String
     var email: String
+    var taxId: String
     var createdAt: Date
     var updatedAt: Date
     var logoData: Data?
     
-    init(name: String, address: String, phone: String, email: String, createdAt: Date = Date(), updatedAt: Date = Date(), logoData: Data? = nil) {
+    init(name: String, address: String, phone: String, email: String, taxId: String = "", createdAt: Date = Date(), updatedAt: Date = Date(), logoData: Data? = nil) {
         self.name = name
         self.address = address
         self.phone = phone
         self.email = email
+        self.taxId = taxId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.logoData = logoData
@@ -108,6 +110,8 @@ final class InvoiceModel {
     var currencyCode: String
     var createdAt: Date
     var paidAt: Date?
+    var periodStart: Date?
+    var periodEnd: Date?
     
     // Client snapshot fields (stored on invoice)
     var clientAddress: String
@@ -120,6 +124,7 @@ final class InvoiceModel {
     var businessAddress: String
     var businessPhone: String
     var businessEmail: String
+    var businessTaxId: String
     var businessLogoData: Data?
     
     // Optional relationship (no annotations - manually managed)
@@ -128,7 +133,7 @@ final class InvoiceModel {
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessLogoData: Data? = nil) {
+    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessTaxId: String = "", businessLogoData: Data? = nil, periodStart: Date? = nil, periodEnd: Date? = nil) {
         self.number = number
         self.clientName = clientName
         self.statusRaw = statusRaw
@@ -148,7 +153,10 @@ final class InvoiceModel {
         self.businessAddress = businessAddress
         self.businessPhone = businessPhone
         self.businessEmail = businessEmail
+        self.businessTaxId = businessTaxId
         self.businessLogoData = businessLogoData
+        self.periodStart = periodStart
+        self.periodEnd = periodEnd
     }
     
     var status: InvoiceStatus {
@@ -183,6 +191,10 @@ final class InvoiceModel {
     
     var displayBusinessEmail: String {
         businessEmail
+    }
+    
+    var displayBusinessTaxId: String {
+        businessTaxId
     }
     
     var displayBusinessLogoData: Data? {
@@ -223,6 +235,12 @@ func formatCurrency(_ amount: Double, currencyCode: String) -> String {
     formatter.numberStyle = .currency
     formatter.currencyCode = code
     return formatter.string(from: NSNumber(value: amount)) ?? String(format: "%.2f", amount)
+}
+
+func formatPeriodRange(start: Date, end: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "dd MMM yyyy"
+    return "\(formatter.string(from: start)) – \(formatter.string(from: end))"
 }
 
 // MARK: - InvoicesView
@@ -474,6 +492,60 @@ struct InvoiceRow: View {
     }
 }
 
+// MARK: - Period Picker View
+struct PeriodPickerView: View {
+    @Environment(\.dismiss) var dismiss
+    @Binding var periodStart: Date?
+    @Binding var periodEnd: Date?
+    
+    @State private var startDate: Date
+    @State private var endDate: Date
+    
+    init(periodStart: Binding<Date?>, periodEnd: Binding<Date?>) {
+        self._periodStart = periodStart
+        self._periodEnd = periodEnd
+        let start = periodStart.wrappedValue ?? Date()
+        let end = periodEnd.wrappedValue ?? Date()
+        _startDate = State(initialValue: start)
+        _endDate = State(initialValue: end >= start ? end : start)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Start Date") {
+                    DatePicker("Start", selection: $startDate, displayedComponents: .date)
+                }
+                
+                Section("End Date") {
+                    DatePicker("End", selection: $endDate, displayedComponents: .date)
+                        .onChange(of: startDate) { oldValue, newValue in
+                            if endDate < newValue {
+                                endDate = newValue
+                            }
+                        }
+                }
+            }
+            .navigationTitle("Invoice Period")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        periodStart = startDate
+                        periodEnd = endDate >= startDate ? endDate : startDate
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Create Invoice View
 struct CreateInvoiceView: View {
     @Environment(\.dismiss) var dismiss
@@ -490,12 +562,6 @@ struct CreateInvoiceView: View {
     @State private var manualBusinessPhone = ""
     @State private var manualBusinessEmail = ""
     @State private var selectedClient: ClientModel?
-    @State private var useManualClientEntry = false
-    @State private var manualClientName = ""
-    @State private var manualClientAddress = ""
-    @State private var manualClientPhone = ""
-    @State private var manualClientEmail = ""
-    @State private var manualClientTaxId = ""
     @State private var clientName = ""
     @State private var clientAddress = ""
     @State private var clientPhone = ""
@@ -505,6 +571,9 @@ struct CreateInvoiceView: View {
     @State private var currencyCode = "USD"
     @State private var issueDate = Date()
     @State private var dueDate = Date()
+    @State private var periodStart: Date?
+    @State private var periodEnd: Date?
+    @State private var showPeriodPicker = false
     @State private var lineItems: [LineItemData] = [LineItemData(title: "", qty: 1, price: 0.0)]
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
@@ -559,37 +628,20 @@ struct CreateInvoiceView: View {
                 }
                 
                 Section("Client") {
-                    Picker("Client Entry Mode", selection: $useManualClientEntry) {
-                        Text("Select Existing Client").tag(false)
-                        Text("Enter Manually").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    if useManualClientEntry {
-                        TextField("Client Name", text: $manualClientName)
-                        TextField("Address (optional)", text: $manualClientAddress)
-                        TextField("Phone (optional)", text: $manualClientPhone)
-                            .keyboardType(.phonePad)
-                        TextField("Email (optional)", text: $manualClientEmail)
-                            .keyboardType(.emailAddress)
-                            .autocapitalization(.none)
-                        TextField("Tax ID (optional)", text: $manualClientTaxId)
+                    if clients.isEmpty {
+                        VStack(spacing: 12) {
+                            Text("No clients found. Please create one to continue.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                     } else {
-                        if clients.isEmpty {
-                            VStack(spacing: 12) {
-                                Text("No clients found. Switch to 'Enter Manually' or create a client.")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                        } else {
-                            Picker("Client", selection: $selectedClient) {
-                                Text("Select Client").tag(nil as ClientModel?)
-                                ForEach(clients) { client in
-                                    Text(client.name).tag(client as ClientModel?)
-                                }
+                        Picker("Client", selection: $selectedClient) {
+                            Text("Select Client").tag(nil as ClientModel?)
+                            ForEach(clients) { client in
+                                Text(client.name).tag(client as ClientModel?)
                             }
                         }
                     }
@@ -609,6 +661,22 @@ struct CreateInvoiceView: View {
                     }
                     DatePicker("Issue Date", selection: $issueDate, displayedComponents: .date)
                     DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
+                    
+                    Button {
+                        showPeriodPicker = true
+                    } label: {
+                        HStack {
+                            Text("Invoice Period (optional)")
+                            Spacer()
+                            if let start = periodStart, let end = periodEnd {
+                                Text(formatPeriodRange(start: start, end: end))
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Not set")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                 }
                 
                 Section("Line Items") {
@@ -677,12 +745,15 @@ struct CreateInvoiceView: View {
                     selectedClient = newClient
                 }
             }
+            .sheet(isPresented: $showPeriodPicker) {
+                PeriodPickerView(periodStart: $periodStart, periodEnd: $periodEnd)
+            }
         }
     }
     
     private var isValid: Bool {
         let hasBusiness = useManualEntry ? !manualBusinessName.trimmingCharacters(in: .whitespaces).isEmpty : selectedBusiness != nil
-        let hasClient = useManualClientEntry ? !manualClientName.trimmingCharacters(in: .whitespaces).isEmpty : selectedClient != nil
+        let hasClient = selectedClient != nil
         return hasBusiness &&
         hasClient &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -699,6 +770,7 @@ struct CreateInvoiceView: View {
         var snapshotAddress = ""
         var snapshotPhone = ""
         var snapshotEmail = ""
+        var snapshotTaxId = ""
         var snapshotLogoData: Data? = nil
         
         if useManualEntry {
@@ -717,6 +789,7 @@ struct CreateInvoiceView: View {
             snapshotAddress = manualBusinessAddress
             snapshotPhone = manualBusinessPhone
             snapshotEmail = manualBusinessEmail
+            snapshotTaxId = ""
         } else if let selected = selectedBusiness {
             // Use selected profile - copy to snapshot
             finalBusinessProfile = selected
@@ -724,10 +797,11 @@ struct CreateInvoiceView: View {
             snapshotAddress = selected.address
             snapshotPhone = selected.phone
             snapshotEmail = selected.email
+            snapshotTaxId = selected.taxId
             snapshotLogoData = selected.logoData
         }
         
-        // Handle client selection/manual entry
+        // Handle client selection
         var finalClient: ClientModel?
         var clientSnapshotName = ""
         var clientSnapshotAddress = ""
@@ -735,26 +809,7 @@ struct CreateInvoiceView: View {
         var clientSnapshotEmail = ""
         var clientSnapshotTaxId = ""
         
-        if useManualClientEntry {
-            // Create new client from manual entry
-            let newClient = ClientModel(
-                name: manualClientName,
-                address: manualClientAddress,
-                phone: manualClientPhone,
-                email: manualClientEmail,
-                taxId: manualClientTaxId,
-                logoData: nil
-            )
-            modelContext.insert(newClient)
-            finalClient = newClient
-            
-            // Copy to snapshot
-            clientSnapshotName = manualClientName
-            clientSnapshotAddress = manualClientAddress
-            clientSnapshotPhone = manualClientPhone
-            clientSnapshotEmail = manualClientEmail
-            clientSnapshotTaxId = manualClientTaxId
-        } else if let selected = selectedClient {
+        if let selected = selectedClient {
             // Use selected client - copy to snapshot
             finalClient = selected
             clientSnapshotName = selected.name
@@ -775,7 +830,9 @@ struct CreateInvoiceView: View {
             business: finalBusinessProfile,
             items: lineItemModels,
             paidAt: nil,
-            currencyCode: currencyCode
+            currencyCode: currencyCode,
+            periodStart: periodStart,
+            periodEnd: periodEnd
         )
         
         // Assign snapshot fields
@@ -789,6 +846,7 @@ struct CreateInvoiceView: View {
         invoice.businessAddress = snapshotAddress
         invoice.businessPhone = snapshotPhone
         invoice.businessEmail = snapshotEmail
+        invoice.businessTaxId = snapshotTaxId
         invoice.businessLogoData = snapshotLogoData
         
         modelContext.insert(invoice)
@@ -813,12 +871,6 @@ struct EditInvoiceView: View {
     
     @State private var selectedBusiness: BusinessProfileModel?
     @State private var selectedClient: ClientModel?
-    @State private var useManualClientEntry = false
-    @State private var manualClientName = ""
-    @State private var manualClientAddress = ""
-    @State private var manualClientPhone = ""
-    @State private var manualClientEmail = ""
-    @State private var manualClientTaxId = ""
     @State private var clientName = ""
     @State private var clientAddress = ""
     @State private var clientPhone = ""
@@ -828,6 +880,9 @@ struct EditInvoiceView: View {
     @State private var currencyCode = "USD"
     @State private var issueDate = Date()
     @State private var dueDate = Date()
+    @State private var periodStart: Date?
+    @State private var periodEnd: Date?
+    @State private var showPeriodPicker = false
     @State private var lineItems: [LineItemData] = []
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
@@ -882,37 +937,20 @@ struct EditInvoiceView: View {
                 }
                 
                 Section("Client") {
-                    Picker("Client Entry Mode", selection: $useManualClientEntry) {
-                        Text("Select Existing Client").tag(false)
-                        Text("Enter Manually").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    if useManualClientEntry {
-                        TextField("Client Name", text: $manualClientName)
-                        TextField("Address (optional)", text: $manualClientAddress)
-                        TextField("Phone (optional)", text: $manualClientPhone)
-                            .keyboardType(.phonePad)
-                        TextField("Email (optional)", text: $manualClientEmail)
-                            .keyboardType(.emailAddress)
-                            .autocapitalization(.none)
-                        TextField("Tax ID (optional)", text: $manualClientTaxId)
+                    if clients.isEmpty {
+                        VStack(spacing: 12) {
+                            Text("No clients found. Please create one to continue.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                     } else {
-                        if clients.isEmpty {
-                            VStack(spacing: 12) {
-                                Text("No clients found. Switch to 'Enter Manually' or create a client.")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                        } else {
-                            Picker("Client", selection: $selectedClient) {
-                                Text("Select Client").tag(nil as ClientModel?)
-                                ForEach(clients) { client in
-                                    Text(client.name).tag(client as ClientModel?)
-                                }
+                        Picker("Client", selection: $selectedClient) {
+                            Text("Select Client").tag(nil as ClientModel?)
+                            ForEach(clients) { client in
+                                Text(client.name).tag(client as ClientModel?)
                             }
                         }
                     }
@@ -932,6 +970,22 @@ struct EditInvoiceView: View {
                     }
                     DatePicker("Issue Date", selection: $issueDate, displayedComponents: .date)
                     DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
+                    
+                    Button {
+                        showPeriodPicker = true
+                    } label: {
+                        HStack {
+                            Text("Invoice Period (optional)")
+                            Spacer()
+                            if let start = periodStart, let end = periodEnd {
+                                Text(formatPeriodRange(start: start, end: end))
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Not set")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                 }
                 
                 Section("Line Items") {
@@ -1000,13 +1054,15 @@ struct EditInvoiceView: View {
                     selectedClient = newClient
                 }
             }
+            .sheet(isPresented: $showPeriodPicker) {
+                PeriodPickerView(periodStart: $periodStart, periodEnd: $periodEnd)
+            }
         }
     }
     
     private var isValid: Bool {
-        let hasClient = useManualClientEntry ? !manualClientName.trimmingCharacters(in: .whitespaces).isEmpty : selectedClient != nil
         return selectedBusiness != nil &&
-        hasClient &&
+        selectedClient != nil &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
         lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 }
     }
@@ -1015,29 +1071,14 @@ struct EditInvoiceView: View {
         selectedBusiness = invoice.businessProfile
         
         // Load client data
-        if let clientRef = invoice.clientRef {
-            // Invoice has a client reference - use it
-            selectedClient = clientRef
-            useManualClientEntry = false
-            clientName = invoice.clientName
-            clientAddress = invoice.clientAddress
-            clientPhone = invoice.clientPhone
-            clientEmail = invoice.clientEmail
-            clientTaxId = invoice.clientTaxId
-        } else {
-            // No client reference - use manual entry mode with snapshot data
-            useManualClientEntry = true
-            manualClientName = invoice.clientName
-            manualClientAddress = invoice.clientAddress
-            manualClientPhone = invoice.clientPhone
-            manualClientEmail = invoice.clientEmail
-            manualClientTaxId = invoice.clientTaxId
-        }
+        selectedClient = invoice.clientRef
         
         invoiceNumber = invoice.number
         currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
         issueDate = invoice.issueDate
         dueDate = invoice.dueDate
+        periodStart = invoice.periodStart
+        periodEnd = invoice.periodEnd
         taxPercent = invoice.taxPercent
         
         // Load line items
@@ -1071,30 +1112,12 @@ struct EditInvoiceView: View {
             invoice.businessAddress = selected.address
             invoice.businessPhone = selected.phone
             invoice.businessEmail = selected.email
+            invoice.businessTaxId = selected.taxId
             invoice.businessLogoData = selected.logoData
         }
         
-        // Handle client selection/manual entry
-        if useManualClientEntry {
-            // Create new client from manual entry
-            let newClient = ClientModel(
-                name: manualClientName,
-                address: manualClientAddress,
-                phone: manualClientPhone,
-                email: manualClientEmail,
-                taxId: manualClientTaxId,
-                logoData: nil
-            )
-            modelContext.insert(newClient)
-            invoice.clientRef = newClient
-            
-            // Copy to snapshot
-            invoice.clientName = manualClientName
-            invoice.clientAddress = manualClientAddress
-            invoice.clientPhone = manualClientPhone
-            invoice.clientEmail = manualClientEmail
-            invoice.clientTaxId = manualClientTaxId
-        } else if let selected = selectedClient {
+        // Handle client selection
+        if let selected = selectedClient {
             // Use selected client - copy to snapshot
             invoice.clientRef = selected
             invoice.clientName = selected.name
@@ -1108,6 +1131,8 @@ struct EditInvoiceView: View {
         invoice.currencyCode = currencyCode
         invoice.issueDate = issueDate
         invoice.dueDate = dueDate
+        invoice.periodStart = periodStart
+        invoice.periodEnd = periodEnd
         invoice.taxPercent = taxPercent
         invoice.items = newLineItems
         
@@ -1215,6 +1240,12 @@ struct InvoiceDetailView: View {
                             .foregroundColor(.secondary)
                     } else if !invoice.displayBusinessPhone.isEmpty {
                         Text(invoice.displayBusinessPhone)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if !invoice.displayBusinessTaxId.isEmpty {
+                        Text("Tax ID: \(invoice.displayBusinessTaxId)")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -1592,6 +1623,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         let businessAddress = invoice.displayBusinessAddress
         let businessPhone = invoice.displayBusinessPhone
         let businessEmail = invoice.displayBusinessEmail
+        let businessTaxId = invoice.displayBusinessTaxId
         let businessLogoData = invoice.displayBusinessLogoData
         
         if !businessName.isEmpty {
@@ -1629,6 +1661,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
             if !businessAddress.isEmpty { textLines += 1 }
             if !businessPhone.isEmpty { textLines += 1 }
             if !businessEmail.isEmpty { textLines += 1 }
+            if !businessTaxId.isEmpty { textLines += 1 }
             let textHeight = headerFontSize + CGFloat(textLines - 1) * lineHeight
             
             // Draw business info
@@ -1639,8 +1672,20 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
             if !businessPhone.isEmpty {
                 drawText(businessPhone, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 2), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
+            var currentLine = 0
+            if !businessAddress.isEmpty {
+                currentLine += 1
+            }
+            if !businessPhone.isEmpty {
+                currentLine += 1
+            }
             if !businessEmail.isEmpty {
-                drawText(businessEmail, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * 3), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
+                currentLine += 1
+                drawText(businessEmail, at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * CGFloat(currentLine)), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
+            }
+            if !businessTaxId.isEmpty {
+                currentLine += 1
+                drawText("Tax ID: \(businessTaxId)", at: CGPoint(x: businessInfoX, y: businessInfoY + lineHeight * CGFloat(currentLine)), font: .systemFont(ofSize: bodyFontSize), width: contentWidth - (businessInfoX - margin))
             }
             
             headerHeight = max(logoHeight, textHeight)
@@ -1660,7 +1705,14 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         yPosition += spacing
         
         drawText("Due Date: \(dateFormatter.string(from: invoice.dueDate))", at: CGPoint(x: margin, y: yPosition), font: detailFont)
-        yPosition += spacing * 1.5
+        yPosition += spacing
+        
+        if let periodStart = invoice.periodStart, let periodEnd = invoice.periodEnd {
+            drawText("Period: \(formatPeriodRange(start: periodStart, end: periodEnd))", at: CGPoint(x: margin, y: yPosition), font: detailFont)
+            yPosition += spacing
+        }
+        
+        yPosition += spacing * 0.5
         
         // Bill To section
         drawText("Bill To:", at: CGPoint(x: margin, y: yPosition), font: .boldSystemFont(ofSize: bodyFontSize + 2))
@@ -1814,6 +1866,7 @@ struct CreateBusinessProfileView: View {
     @State private var address = ""
     @State private var phone = ""
     @State private var email = ""
+    @State private var taxId = ""
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showLogoPreview = false
@@ -1873,6 +1926,7 @@ struct CreateBusinessProfileView: View {
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
+                    TextField("Tax ID (optional)", text: $taxId)
                 }
             }
             .navigationTitle("New Business Profile")
@@ -1906,6 +1960,7 @@ struct CreateBusinessProfileView: View {
             address: address,
             phone: phone,
             email: email,
+            taxId: taxId,
             createdAt: Date(),
             updatedAt: Date(),
             logoData: logoData
@@ -1934,6 +1989,7 @@ struct EditBusinessProfileView: View {
     @State private var address: String
     @State private var phone: String
     @State private var email: String
+    @State private var taxId: String
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showLogoPreview = false
@@ -1944,6 +2000,7 @@ struct EditBusinessProfileView: View {
         _address = State(initialValue: business.address)
         _phone = State(initialValue: business.phone)
         _email = State(initialValue: business.email)
+        _taxId = State(initialValue: business.taxId)
         _logoData = State(initialValue: business.logoData)
     }
     
@@ -1998,6 +2055,7 @@ struct EditBusinessProfileView: View {
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
+                    TextField("Tax ID (optional)", text: $taxId)
                 }
             }
             .navigationTitle("Edit Business Profile")
@@ -2024,6 +2082,7 @@ struct EditBusinessProfileView: View {
         business.address = address
         business.phone = phone
         business.email = email
+        business.taxId = taxId
         business.logoData = logoData
         business.updatedAt = Date()
         
