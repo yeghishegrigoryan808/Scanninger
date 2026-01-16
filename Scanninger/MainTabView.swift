@@ -483,7 +483,7 @@ struct InvoicesView: View {
         }
         
         do {
-//            try modelContext.save()
+            try modelContext.save()
         } catch {
             print("Failed to delete invoice: \(error)")
         }
