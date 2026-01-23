@@ -360,7 +360,7 @@ struct InvoicesView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Search bar
-                SearchBar(text: $searchText)
+                SearchBar(text: $searchText, placeholder: "Search invoices...")
                     .padding(.horizontal)
                     .padding(.top, 8)
                 
@@ -403,6 +403,13 @@ struct InvoicesView: View {
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            }
+                    )
                 } else {
                     List {
                         ForEach(filteredInvoices) { invoice in
@@ -428,6 +435,14 @@ struct InvoicesView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .scrollDismissesKeyboard(.interactively)
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            }
+                    )
                 }
             }
             .navigationTitle("Invoices")
@@ -494,12 +509,18 @@ struct InvoicesView: View {
 // MARK: - Search Bar
 struct SearchBar: View {
     @Binding var text: String
+    var placeholder: String
+    
+    init(text: Binding<String>, placeholder: String = "Search...") {
+        self._text = text
+        self.placeholder = placeholder
+    }
     
     var body: some View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary)
-            TextField("Search invoices...", text: $text)
+            TextField(placeholder, text: $text)
         }
         .padding(8)
         .background(Color(.systemGray6))
@@ -2599,14 +2620,32 @@ struct ClientsView: View {
     
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                // Search bar
+                SearchBar(text: $searchText, placeholder: "Search clients...")
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                
+                // Clients list
                 if filteredClients.isEmpty {
                     VStack(spacing: 8) {
                         Text(searchText.isEmpty ? "No clients yet" : "No results")
                             .font(.headline)
                             .foregroundColor(.secondary)
+                        if searchText.isEmpty {
+                            Text("Tap + to add one")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            }
+                    )
                 } else {
                     List {
                         ForEach(filteredClients) { client in
@@ -2623,10 +2662,18 @@ struct ClientsView: View {
                             }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollDismissesKeyboard(.interactively)
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            }
+                    )
                 }
             }
             .navigationTitle("Clients")
-            .searchable(text: $searchText, prompt: "Search clients…")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -3360,14 +3407,32 @@ struct BusinessProfilesView: View {
     
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                // Search bar
+                SearchBar(text: $searchText, placeholder: "Search businesses...")
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                
+                // Business profiles list
                 if filteredBusinessProfiles.isEmpty {
                     VStack(spacing: 8) {
                         Text(searchText.isEmpty ? "No businesses yet" : "No results")
                             .font(.headline)
                             .foregroundColor(.secondary)
+                        if searchText.isEmpty {
+                            Text("Tap + to add one")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            }
+                    )
                 } else {
                     List {
                         ForEach(filteredBusinessProfiles) { profile in
@@ -3384,10 +3449,18 @@ struct BusinessProfilesView: View {
                             }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollDismissesKeyboard(.interactively)
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            }
+                    )
                 }
             }
             .navigationTitle("My Business")
-            .searchable(text: $searchText, prompt: "Search businesses…")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
