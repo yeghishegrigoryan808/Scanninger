@@ -691,6 +691,8 @@ struct CreateInvoiceView: View {
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
     @State private var showCreateClient = false
+    @State private var itemIndexToDelete: Int?
+    @State private var showDeleteItemAlert = false
     
     init(template: InvoiceModel? = nil) {
         self.template = template
@@ -805,7 +807,8 @@ struct CreateInvoiceView: View {
                                 set: { lineItems[index] = $0 }
                             ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
                                 if lineItems.count > 1 {
-                                    lineItems.remove(at: index)
+                                    itemIndexToDelete = index
+                                    showDeleteItemAlert = true
                                 }
                             })
                         }
@@ -927,6 +930,19 @@ struct CreateInvoiceView: View {
             }
             .sheet(isPresented: $showPeriodPicker) {
                 PeriodPickerView(periodStart: $periodStart, periodEnd: $periodEnd)
+            }
+            .alert("Delete item?", isPresented: $showDeleteItemAlert) {
+                Button("Cancel", role: .cancel) {
+                    itemIndexToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let index = itemIndexToDelete, index < lineItems.count {
+                        lineItems.remove(at: index)
+                    }
+                    itemIndexToDelete = nil
+                }
+            } message: {
+                Text("Are you sure you want to remove this item?")
             }
         }
     }
@@ -1082,6 +1098,8 @@ struct EditInvoiceView: View {
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
     @State private var showCreateClient = false
+    @State private var itemIndexToDelete: Int?
+    @State private var showDeleteItemAlert = false
     
     private let currencies: [(code: String, symbol: String)] = [
         ("USD", "$"),
@@ -1189,7 +1207,8 @@ struct EditInvoiceView: View {
                             get: { lineItems[index] },
                             set: { lineItems[index] = $0 }
                         ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
-                            lineItems.remove(at: index)
+                            itemIndexToDelete = index
+                            showDeleteItemAlert = true
                         })
                     }
                     
@@ -1278,6 +1297,19 @@ struct EditInvoiceView: View {
             }
             .sheet(isPresented: $showPeriodPicker) {
                 PeriodPickerView(periodStart: $periodStart, periodEnd: $periodEnd)
+            }
+            .alert("Delete item?", isPresented: $showDeleteItemAlert) {
+                Button("Cancel", role: .cancel) {
+                    itemIndexToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let index = itemIndexToDelete, index < lineItems.count {
+                        lineItems.remove(at: index)
+                    }
+                    itemIndexToDelete = nil
+                }
+            } message: {
+                Text("Are you sure you want to remove this item?")
             }
         }
     }
