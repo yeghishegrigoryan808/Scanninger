@@ -1583,9 +1583,7 @@ struct InvoiceDetailView: View {
                 DetailRow(label: "Status", value: invoice.statusText)
                 DetailRow(label: "Issue Date", value: formattedIssueDate)
                 DetailRow(label: "Due Date", value: formattedDueDate)
-                if invoice.isPaid, let paidAt = invoice.paidAt {
-                    DetailRow(label: "Paid on", value: formatPaidDate(paidAt))
-                }
+                DetailRow(label: "Paid Date", value: invoice.isPaid && invoice.paidAt != nil ? formatPaidDate(invoice.paidAt!) : "—")
             }
             .padding()
             
