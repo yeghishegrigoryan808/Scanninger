@@ -413,17 +413,25 @@ struct InvoicesView: View {
                     )
                 } else {
                     List {
-                        ForEach(filteredInvoices, id: \.persistentModelID) { invoice in
-                            InvoiceRowContainerView(
-                                invoice: invoice,
-                                onDuplicate: {
+                        ForEach(filteredInvoices) { invoice in
+                            NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
+                                InvoiceRow(invoice: invoice)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
                                     invoiceToDuplicate = invoice
-                                },
-                                onDelete: {
+                                } label: {
+                                    Label("Duplicate", systemImage: "doc.on.doc")
+                                }
+                                
+                                Button {
                                     invoiceToDelete = invoice
                                     showDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
-                            )
+                                .tint(.red)
+                            }
                         }
                     }
                     .listStyle(.plain)
@@ -488,9 +496,7 @@ struct InvoicesView: View {
     }
     
     private func deleteInvoice(_ invoice: InvoiceModel) {
-        withAnimation {
-            modelContext.delete(invoice)
-        }
+        modelContext.delete(invoice)
         
         do {
             try modelContext.save()
@@ -540,34 +546,6 @@ struct FilterButton: View {
                 .background(isSelected ? Color.blue : Color(.systemGray5))
                 .cornerRadius(20)
         }
-    }
-}
-
-// MARK: - Invoice Row Container
-struct InvoiceRowContainerView: View {
-    let invoice: InvoiceModel
-    let onDuplicate: () -> Void
-    let onDelete: () -> Void
-    
-    var body: some View {
-        NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
-            InvoiceRow(invoice: invoice)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                onDuplicate()
-            } label: {
-                Label("Duplicate", systemImage: "doc.on.doc")
-            }
-            
-            Button {
-                onDelete()
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .tint(.red)
-        }
-        .id(invoice.persistentModelID)
     }
 }
 
@@ -2530,6 +2508,7 @@ struct CreateClientView: View {
         
         do {
             try modelContext.save()
+            onSave?(client)
             dismiss()
         } catch {
             print("Failed to save client: \(error)")
