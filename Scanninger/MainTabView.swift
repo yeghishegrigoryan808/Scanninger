@@ -413,24 +413,17 @@ struct InvoicesView: View {
                     )
                 } else {
                     List {
-                        ForEach(filteredInvoices) { invoice in
-                            NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
-                                InvoiceRow(invoice: invoice)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
+                        ForEach(filteredInvoices, id: \.persistentModelID) { invoice in
+                            InvoiceRowContainerView(
+                                invoice: invoice,
+                                onDuplicate: {
                                     invoiceToDuplicate = invoice
-                                } label: {
-                                    Label("Duplicate", systemImage: "doc.on.doc")
-                                }
-                                
-                                Button(role: .destructive) {
+                                },
+                                onDelete: {
                                     invoiceToDelete = invoice
                                     showDeleteConfirmation = true
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
                                 }
-                            }
+                            )
                         }
                     }
                     .listStyle(.plain)
@@ -547,6 +540,34 @@ struct FilterButton: View {
                 .background(isSelected ? Color.blue : Color(.systemGray5))
                 .cornerRadius(20)
         }
+    }
+}
+
+// MARK: - Invoice Row Container
+struct InvoiceRowContainerView: View {
+    let invoice: InvoiceModel
+    let onDuplicate: () -> Void
+    let onDelete: () -> Void
+    
+    var body: some View {
+        NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
+            InvoiceRow(invoice: invoice)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                onDuplicate()
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+            }
+            
+            Button {
+                onDelete()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .tint(.red)
+        }
+        .id(invoice.persistentModelID)
     }
 }
 
