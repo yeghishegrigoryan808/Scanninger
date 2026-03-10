@@ -332,6 +332,7 @@ struct InvoicesView: View {
     @State private var showDeleteConfirmation = false
     @State private var invoiceToEdit: InvoiceModel?
     @State private var showEditInvoice = false
+    @State private var invoiceToDuplicate: InvoiceModel?
     
     private var filteredInvoices: [InvoiceModel] {
         var filtered = allInvoices
@@ -418,9 +419,7 @@ struct InvoicesView: View {
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button {
-                                    let duplicated = duplicateInvoice(invoice, modelContext: modelContext, allInvoices: allInvoices)
-                                    invoiceToEdit = duplicated
-                                    showEditInvoice = true
+                                    invoiceToDuplicate = invoice
                                 } label: {
                                     Label("Duplicate", systemImage: "doc.on.doc")
                                 }
@@ -457,6 +456,9 @@ struct InvoicesView: View {
             }
             .sheet(isPresented: $showCreateInvoice) {
                 CreateInvoiceView()
+            }
+            .sheet(item: $invoiceToDuplicate) { template in
+                CreateInvoiceView(template: template)
             }
             .sheet(isPresented: $showEditInvoice) {
                 if let invoice = invoiceToEdit {
@@ -665,6 +667,8 @@ struct CreateInvoiceView: View {
     @Query(sort: \ClientModel.name) private var clients: [ClientModel]
     @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
     
+    let template: InvoiceModel?
+    
     @State private var selectedBusiness: BusinessProfileModel?
     @State private var useManualEntry = false
     @State private var manualBusinessName = ""
@@ -688,6 +692,10 @@ struct CreateInvoiceView: View {
     @State private var taxPercent: Double = 0.0
     @State private var showCreateBusinessProfile = false
     @State private var showCreateClient = false
+    
+    init(template: InvoiceModel? = nil) {
+        self.template = template
+    }
     
     private let currencies: [(code: String, symbol: String)] = [
         ("USD", "$"),
@@ -875,9 +883,37 @@ struct CreateInvoiceView: View {
                 }
             }
             .onAppear {
-                // Ensure lineItems always has at least one item
-                if lineItems.isEmpty {
-                    lineItems = [LineItemData()]
+                // Prefill from template if provided
+                if let template = template {
+                    selectedBusiness = template.businessProfile
+                    selectedClient = template.clientRef
+                    invoiceNumber = "" // Will be auto-generated on Save
+                    currencyCode = template.currencyCode.isEmpty ? "USD" : template.currencyCode
+                    issueDate = Date() // New issue date
+                    dueDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+                    periodStart = template.periodStart
+                    periodEnd = template.periodEnd
+                    taxPercent = template.taxPercent
+                    
+                    // Copy line items
+                    if let items = template.items, !items.isEmpty {
+                        lineItems = items.map { item in
+                            LineItemData(
+                                title: item.title,
+                                qty: item.qty,
+                                price: item.price,
+                                details: item.details,
+                                unit: item.unit.isEmpty ? "pcs" : item.unit
+                            )
+                        }
+                    } else {
+                        lineItems = [LineItemData()]
+                    }
+                } else {
+                    // Ensure lineItems always has at least one item
+                    if lineItems.isEmpty {
+                        lineItems = [LineItemData()]
+                    }
                 }
             }
             .sheet(isPresented: $showCreateBusinessProfile) {
