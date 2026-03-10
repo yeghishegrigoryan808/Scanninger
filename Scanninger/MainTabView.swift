@@ -1796,24 +1796,30 @@ struct TemplateSelectionView: View {
     let invoice: InvoiceModel
     let onSelect: (PDFTemplate) -> Void
     
+    @State private var selectedTemplate: PDFTemplate?
+    
+    private let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
+    
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(PDFTemplate.allCases, id: \.self) { template in
-                    Button(action: {
-                        onSelect(template)
-                        dismiss()
-                    }) {
-                        HStack {
-                            Text(template.rawValue)
-                                .foregroundColor(.primary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                        }
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(PDFTemplate.allCases, id: \.self) { template in
+                        TemplateCard(
+                            template: template,
+                            isSelected: selectedTemplate == template,
+                            onTap: {
+                                selectedTemplate = template
+                                onSelect(template)
+                                dismiss()
+                            }
+                        )
                     }
                 }
+                .padding()
             }
             .navigationTitle("Select Template")
             .toolbar {
@@ -1823,6 +1829,220 @@ struct TemplateSelectionView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Template Card
+struct TemplateCard: View {
+    let template: PDFTemplate
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Template preview thumbnail
+                TemplatePreview(template: template)
+                    .frame(height: 120)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                
+                // Template name
+                Text(template.rawValue)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 3)
+            )
+            .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Template Preview
+struct TemplatePreview: View {
+    let template: PDFTemplate
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            switch template {
+            case .classic:
+                ClassicPreview()
+            case .modern:
+                ModernPreview()
+            case .minimal:
+                MinimalPreview()
+            }
+        }
+        .padding(8)
+    }
+}
+
+// MARK: - Classic Preview
+struct ClassicPreview: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Header
+            HStack {
+                Rectangle()
+                    .fill(Color.blue)
+                    .frame(width: 40, height: 8)
+                Spacer()
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 30, height: 8)
+            }
+            
+            Spacer()
+                .frame(height: 6)
+            
+            // Title
+            Rectangle()
+                .fill(Color.primary.opacity(0.8))
+                .frame(height: 6)
+                .frame(maxWidth: .infinity)
+            
+            Spacer()
+                .frame(height: 4)
+            
+            // Lines
+            ForEach(0..<3) { _ in
+                HStack {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.4))
+                        .frame(width: 50, height: 3)
+                    Spacer()
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 30, height: 3)
+                }
+                Spacer()
+                    .frame(height: 3)
+            }
+            
+            Spacer()
+            
+            // Footer line
+            Rectangle()
+                .fill(Color.primary.opacity(0.6))
+                .frame(height: 4)
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Modern Preview
+struct ModernPreview: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Large header
+            Rectangle()
+                .fill(Color.blue.opacity(0.7))
+                .frame(height: 20)
+                .frame(maxWidth: .infinity)
+            
+            Spacer()
+                .frame(height: 8)
+            
+            // Title with accent
+            HStack(spacing: 4) {
+                Rectangle()
+                    .fill(Color.blue)
+                    .frame(width: 3, height: 12)
+                Rectangle()
+                    .fill(Color.primary.opacity(0.7))
+                    .frame(height: 6)
+                    .frame(maxWidth: .infinity)
+            }
+            
+            Spacer()
+                .frame(height: 6)
+            
+            // Grid-like content
+            VStack(spacing: 4) {
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(height: 3)
+                        .frame(maxWidth: .infinity)
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(height: 3)
+                        .frame(maxWidth: .infinity)
+                }
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(height: 3)
+                        .frame(maxWidth: .infinity)
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(height: 3)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            
+            Spacer()
+            
+            // Bottom accent
+            Rectangle()
+                .fill(Color.blue.opacity(0.5))
+                .frame(height: 3)
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Minimal Preview
+struct MinimalPreview: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Minimal header
+            Rectangle()
+                .fill(Color.primary.opacity(0.3))
+                .frame(height: 4)
+                .frame(maxWidth: .infinity)
+            
+            Spacer()
+                .frame(height: 12)
+            
+            // Simple title
+            Rectangle()
+                .fill(Color.primary.opacity(0.5))
+                .frame(height: 4)
+                .frame(maxWidth: 120)
+            
+            Spacer()
+                .frame(height: 8)
+            
+            // Minimal lines
+            ForEach(0..<4) { _ in
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(height: 2)
+                    .frame(maxWidth: .infinity)
+                Spacer()
+                    .frame(height: 4)
+            }
+            
+            Spacer()
+            
+            // Subtle divider
+            Rectangle()
+                .fill(Color.secondary.opacity(0.2))
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
         }
     }
 }
