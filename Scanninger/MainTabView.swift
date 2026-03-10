@@ -1671,15 +1671,7 @@ struct InvoiceDetailView: View {
             }
         }
         .sheet(isPresented: $showTemplateSelection) {
-            TemplateSelectionView(invoice: invoice) { template in
-                createPDF(with: template)
-            }
-        }
-        .sheet(item: Binding(
-            get: { pdfURL.map { PDFPreviewItem(url: $0) } },
-            set: { pdfURL = $0?.url }
-        )) { item in
-            PDFPreviewView(pdfURL: item.url)
+            TemplateSelectionView(invoice: invoice)
         }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: [item.url])
@@ -1794,9 +1786,11 @@ struct PDFPreviewItem: Identifiable {
 struct TemplateSelectionView: View {
     @Environment(\.dismiss) var dismiss
     let invoice: InvoiceModel
-    let onSelect: (PDFTemplate) -> Void
     
     @State private var selectedTemplate: PDFTemplate?
+    @State private var pdfURL: URL?
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
     
     private let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -1805,30 +1799,80 @@ struct TemplateSelectionView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(PDFTemplate.allCases, id: \.self) { template in
-                        TemplateCard(
-                            template: template,
-                            isSelected: selectedTemplate == template,
-                            onTap: {
-                                selectedTemplate = template
-                                onSelect(template)
+            ZStack {
+                if let pdfURL = pdfURL {
+                    PDFPreviewView(pdfURL: pdfURL, onBack: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            self.pdfURL = nil
+                        }
+                    })
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(PDFTemplate.allCases, id: \.self) { template in
+                                TemplateCard(
+                                    template: template,
+                                    isSelected: selectedTemplate == template,
+                                    onTap: {
+                                        selectedTemplate = template
+                                        generatePDF(for: template)
+                                    }
+                                )
+                            }
+                        }
+                        .padding()
+                    }
+                    .navigationTitle("Select Template")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Close") {
                                 dismiss()
                             }
-                        )
+                        }
                     }
-                }
-                .padding()
-            }
-            .navigationTitle("Select Template")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
+                    .alert("Error", isPresented: $showErrorAlert) {
+                        Button("OK", role: .cancel) { }
+                    } message: {
+                        Text(errorMessage)
                     }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
                 }
             }
+        }
+    }
+    
+    private func generatePDF(for template: PDFTemplate) {
+        do {
+            let url = try generateInvoicePDF(invoice: invoice, template: template)
+            
+            // Verify file exists and has content
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                errorMessage = "PDF file was not created"
+                showErrorAlert = true
+                return
+            }
+            
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            if fileSize == 0 {
+                errorMessage = "PDF file is empty"
+                showErrorAlert = true
+                return
+            }
+            
+            withAnimation(.easeInOut(duration: 0.25)) {
+                pdfURL = url
+            }
+        } catch {
+            errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
+            showErrorAlert = true
         }
     }
 }
@@ -2050,32 +2094,30 @@ struct MinimalPreview: View {
 // MARK: - PDF Preview View
 struct PDFPreviewView: View {
     let pdfURL: URL
-    @Environment(\.dismiss) var dismiss
+    let onBack: () -> Void
     @State private var shareItem: ShareItem?
     
     var body: some View {
-        NavigationStack {
-            PDFKitView(url: pdfURL)
-                .navigationTitle("PDF Preview")
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Close") {
-                            dismiss()
-                        }
-                    }
-                    
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(action: {
-                            shareItem = ShareItem(url: pdfURL)
-                        }) {
-                            Image(systemName: "square.and.arrow.up")
-                        }
+        PDFKitView(url: pdfURL)
+            .navigationTitle("PDF Preview")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") {
+                        onBack()
                     }
                 }
-                .sheet(item: $shareItem) { item in
-                    ShareSheet(items: [item.url])
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        shareItem = ShareItem(url: pdfURL)
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
-        }
+            }
+            .sheet(item: $shareItem) { item in
+                ShareSheet(items: [item.url])
+            }
     }
 }
 
