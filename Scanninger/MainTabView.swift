@@ -950,9 +950,12 @@ struct CreateInvoiceView: View {
     private var isValid: Bool {
         let hasBusiness = useManualEntry ? !manualBusinessName.trimmingCharacters(in: .whitespaces).isEmpty : selectedBusiness != nil
         let hasClient = selectedClient != nil
+        let allItemsHaveNames = lineItems.allSatisfy { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let hasValidItem = lineItems.contains { $0.qty > 0 }
         return hasBusiness &&
         hasClient &&
-        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 }
+        allItemsHaveNames &&
+        hasValidItem
     }
     
     private func generateNextInvoiceNumber() -> String {
@@ -1315,10 +1318,13 @@ struct EditInvoiceView: View {
     }
     
     private var isValid: Bool {
+        let allItemsHaveNames = lineItems.allSatisfy { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let hasValidItem = lineItems.contains { $0.qty > 0 }
         return selectedBusiness != nil &&
         selectedClient != nil &&
         !invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
-        lineItems.contains { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty && $0.qty > 0 }
+        allItemsHaveNames &&
+        hasValidItem
     }
     
     private func loadInvoiceData() {
