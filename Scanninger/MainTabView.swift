@@ -3304,11 +3304,13 @@ struct ItemsView: View {
 
 struct ReportsView: View {
     @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
+    @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
     
     @State private var selectedPeriod: ReportPeriod = .thisMonth
     @State private var showCustomRangePicker = false
     @State private var customStartDate = Date()
     @State private var customEndDate = Date()
+    @State private var selectedBusiness: BusinessProfileModel? = nil // nil = Overall
     @State private var selectedClient: String?
     @State private var showClientInvoices = false
     @State private var showPaidInvoices = false
@@ -3347,9 +3349,19 @@ struct ReportsView: View {
     }
     
     private func filteredInvoices(for period: (start: Date, end: Date)) -> [InvoiceModel] {
-        allInvoices.filter { invoice in
+        var filtered = allInvoices.filter { invoice in
             invoice.issueDate >= period.start && invoice.issueDate <= period.end
         }
+        
+        // Apply business filter if selected
+        if let selectedBusiness = selectedBusiness {
+            filtered = filtered.filter { invoice in
+                // Check both businessProfile relationship and businessName snapshot
+                invoice.businessProfile == selectedBusiness || invoice.businessName == selectedBusiness.name
+            }
+        }
+        
+        return filtered
     }
     
     private func invoiceTotal(_ invoice: InvoiceModel) -> Double {
@@ -3446,6 +3458,19 @@ struct ReportsView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, 100)
                     } else {
+                        // Business Selector
+                        VStack(spacing: 12) {
+                            Picker("Business", selection: $selectedBusiness) {
+                                Text("Overall").tag(nil as BusinessProfileModel?)
+                                ForEach(businessProfiles) { profile in
+                                    Text(profile.name).tag(profile as BusinessProfileModel?)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .padding(.horizontal)
+                        }
+                        .padding(.top, 8)
+                        
                         // Period Selector
                         VStack(spacing: 16) {
                             Picker("Period", selection: $selectedPeriod) {
