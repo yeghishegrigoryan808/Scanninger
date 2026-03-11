@@ -330,6 +330,9 @@ struct InvoicesView: View {
     @State private var invoiceToEdit: InvoiceModel?
     @State private var showEditInvoice = false
     @State private var invoiceToDuplicate: InvoiceModel?
+    @State private var isSelectionMode = false
+    @State private var selectedInvoiceIDs = Set<PersistentIdentifier>()
+    @State private var showBulkDeleteConfirmation = false
     
     private var filteredInvoices: [InvoiceModel] {
         var filtered = allInvoices
@@ -409,30 +412,68 @@ struct InvoicesView: View {
                             }
                     )
                 } else {
-                    List {
-                        ForEach(filteredInvoices) { invoice in
-                            NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
-                                InvoiceRow(invoice: invoice)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    invoiceToDuplicate = invoice
-                                } label: {
-                                    Label("Duplicate", systemImage: "doc.on.doc")
+                    VStack(spacing: 0) {
+                        List {
+                            ForEach(filteredInvoices, id: \.persistentModelID) { invoice in
+                                if isSelectionMode {
+                                    HStack {
+                                        Image(systemName: selectedInvoiceIDs.contains(invoice.persistentModelID) ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(selectedInvoiceIDs.contains(invoice.persistentModelID) ? .blue : .gray)
+                                            .font(.title3)
+                                        
+                                        InvoiceRow(invoice: invoice)
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if selectedInvoiceIDs.contains(invoice.persistentModelID) {
+                                            selectedInvoiceIDs.remove(invoice.persistentModelID)
+                                        } else {
+                                            selectedInvoiceIDs.insert(invoice.persistentModelID)
+                                        }
+                                    }
+                                } else {
+                                    NavigationLink(destination: InvoiceDetailView(invoice: invoice)) {
+                                        InvoiceRow(invoice: invoice)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button {
+                                            invoiceToDuplicate = invoice
+                                        } label: {
+                                            Label("Duplicate", systemImage: "doc.on.doc")
+                                        }
+                                        
+                                        Button {
+                                            invoiceToDelete = invoice
+                                            showDeleteConfirmation = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                        .tint(.red)
+                                    }
                                 }
-                                
-                                Button {
-                                    invoiceToDelete = invoice
-                                    showDeleteConfirmation = true
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                .tint(.red)
                             }
                         }
+                        .listStyle(.plain)
+                        .scrollDismissesKeyboard(.interactively)
+                        
+                        if isSelectionMode && !selectedInvoiceIDs.isEmpty {
+                            Button {
+                                showBulkDeleteConfirmation = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "trash")
+                                    Text("Delete Selected (\(selectedInvoiceIDs.count))")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.red)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                        }
                     }
-                    .listStyle(.plain)
-                    .scrollDismissesKeyboard(.interactively)
                     .background(
                         Color.clear
                             .contentShape(Rectangle())
@@ -445,10 +486,25 @@ struct InvoicesView: View {
             .navigationTitle("Invoices")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateInvoice = true
-                    } label: {
-                        Image(systemName: "plus")
+                    HStack {
+                        if isSelectionMode {
+                            Button("Cancel") {
+                                isSelectionMode = false
+                                selectedInvoiceIDs.removeAll()
+                            }
+                        } else {
+                            Button("Select") {
+                                isSelectionMode = true
+                            }
+                        }
+                        
+                        if !isSelectionMode {
+                            Button {
+                                showCreateInvoice = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                        }
                     }
                 }
             }
@@ -476,6 +532,16 @@ struct InvoicesView: View {
             } message: {
                 Text("This cannot be undone.")
             }
+            .alert("Delete selected invoices?", isPresented: $showBulkDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    // Do nothing
+                }
+                Button("Delete", role: .destructive) {
+                    deleteSelectedInvoices()
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
         }
     }
     
@@ -499,6 +565,22 @@ struct InvoicesView: View {
             try modelContext.save()
         } catch {
             print("Failed to delete invoice: \(error)")
+        }
+    }
+    
+    private func deleteSelectedInvoices() {
+        let invoicesToDelete = filteredInvoices.filter { selectedInvoiceIDs.contains($0.persistentModelID) }
+        
+        for invoice in invoicesToDelete {
+            modelContext.delete(invoice)
+        }
+        
+        do {
+            try modelContext.save()
+            isSelectionMode = false
+            selectedInvoiceIDs.removeAll()
+        } catch {
+            print("Failed to delete invoices: \(error)")
         }
     }
     
