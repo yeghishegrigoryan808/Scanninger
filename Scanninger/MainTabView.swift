@@ -3372,6 +3372,33 @@ struct ReportsView: View {
         formatCurrency(amount, currencyCode: currencyCode)
     }
     
+    private func currencySymbol(for code: String) -> String {
+        switch code {
+        case "RUB": return "₽"
+        case "EUR": return "€"
+        case "USD": return "$"
+        case "GBP": return "£"
+        case "AMD": return "֏"
+        default: return code
+        }
+    }
+    
+    private func formatMoneyWithSymbol(_ amount: Double, currencyCode: String) -> String {
+        let code = currencyCode.isEmpty ? "USD" : currencyCode
+        let symbol = currencySymbol(for: code)
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.groupingSeparator = " "
+        formatter.usesGroupingSeparator = true
+        
+        if let formatted = formatter.string(from: NSNumber(value: amount)) {
+            return "\(symbol)\(formatted)"
+        }
+        return "\(symbol)\(String(format: "%.2f", amount))"
+    }
+    
     private var currentPeriodInvoices: [InvoiceModel] {
         filteredInvoices(for: (start: periodStart, end: periodEnd))
     }
@@ -3593,16 +3620,16 @@ struct ReportsView: View {
                                             Text("Total Revenue")
                                                 .font(.subheadline)
                                                 .foregroundColor(.secondary)
-                                            VStack(alignment: .leading, spacing: 8) {
+                                            VStack(alignment: .leading, spacing: 6) {
                                                 ForEach(revenueByCurrency, id: \.currencyCode) { item in
-                                                    Text(formatMoney(item.total, currencyCode: item.currencyCode))
+                                                    Text(formatMoneyWithSymbol(item.total, currencyCode: item.currencyCode))
                                                         .font(.system(size: 24, weight: .bold))
                                                         .foregroundColor(.primary)
                                                 }
                                             }
                                         }
                                         
-                                        HStack(spacing: 12) {
+                                        HStack(alignment: .top, spacing: 12) {
                                             // Paid Revenue by Currency
                                             VStack(alignment: .leading, spacing: 8) {
                                                 HStack {
@@ -3613,15 +3640,24 @@ struct ReportsView: View {
                                                         .font(.caption)
                                                         .foregroundColor(.secondary)
                                                 }
-                                                VStack(alignment: .leading, spacing: 4) {
-                                                    ForEach(paidRevenueByCurrency, id: \.currencyCode) { item in
-                                                        Text(formatMoney(item.total, currencyCode: item.currencyCode))
-                                                            .font(.headline)
-                                                            .foregroundColor(.primary)
+                                                if paidRevenueByCurrency.isEmpty {
+                                                    Text("No paid invoices")
+                                                        .font(.subheadline)
+                                                        .foregroundColor(.secondary)
+                                                        .padding(.top, 4)
+                                                } else {
+                                                    VStack(alignment: .leading, spacing: 6) {
+                                                        ForEach(paidRevenueByCurrency, id: \.currencyCode) { item in
+                                                            Text(formatMoneyWithSymbol(item.total, currencyCode: item.currencyCode))
+                                                                .font(.title3)
+                                                                .fontWeight(.semibold)
+                                                                .foregroundColor(.primary)
+                                                        }
                                                     }
                                                 }
                                             }
                                             .frame(maxWidth: .infinity, alignment: .leading)
+                                            .frame(minHeight: 80)
                                             .padding()
                                             .background(Color(.systemGray6))
                                             .cornerRadius(12)
@@ -3636,15 +3672,24 @@ struct ReportsView: View {
                                                         .font(.caption)
                                                         .foregroundColor(.secondary)
                                                 }
-                                                VStack(alignment: .leading, spacing: 4) {
-                                                    ForEach(unpaidRevenueByCurrency, id: \.currencyCode) { item in
-                                                        Text(formatMoney(item.total, currencyCode: item.currencyCode))
-                                                            .font(.headline)
-                                                            .foregroundColor(.primary)
+                                                if unpaidRevenueByCurrency.isEmpty {
+                                                    Text("No unpaid invoices")
+                                                        .font(.subheadline)
+                                                        .foregroundColor(.secondary)
+                                                        .padding(.top, 4)
+                                                } else {
+                                                    VStack(alignment: .leading, spacing: 6) {
+                                                        ForEach(unpaidRevenueByCurrency, id: \.currencyCode) { item in
+                                                            Text(formatMoneyWithSymbol(item.total, currencyCode: item.currencyCode))
+                                                                .font(.title3)
+                                                                .fontWeight(.semibold)
+                                                                .foregroundColor(.primary)
+                                                        }
                                                     }
                                                 }
                                             }
                                             .frame(maxWidth: .infinity, alignment: .leading)
+                                            .frame(minHeight: 80)
                                             .padding()
                                             .background(Color(.systemGray6))
                                             .cornerRadius(12)
