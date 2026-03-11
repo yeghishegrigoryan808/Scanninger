@@ -838,6 +838,12 @@ struct CreateInvoiceView: View {
                         } label: {
                             Label("Fixed fee (project)", systemImage: "doc.text")
                         }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: ""))
+                        } label: {
+                            Label("Custom", systemImage: "slider.horizontal.3")
+                        }
                     } label: {
                         Label("Add Item", systemImage: "plus.circle")
                     }
@@ -1238,6 +1244,12 @@ struct EditInvoiceView: View {
                             lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "project"))
                         } label: {
                             Label("Fixed fee (project)", systemImage: "doc.text")
+                        }
+                        
+                        Button {
+                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: ""))
+                        } label: {
+                            Label("Custom", systemImage: "slider.horizontal.3")
                         }
                     } label: {
                         Label("Add Item", systemImage: "plus.circle")
