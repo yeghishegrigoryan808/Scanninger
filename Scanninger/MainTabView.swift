@@ -273,16 +273,13 @@ func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allIn
         )
     }
     
-    // Calculate new due date (7 days from now)
-    let newDueDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-    
     // Create new invoice with all snapshot fields
     let newInvoice = InvoiceModel(
         number: newInvoiceNumber,
         clientName: invoice.clientName,
         statusRaw: "Unpaid",
-        issueDate: Date(),
-        dueDate: newDueDate,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
         taxPercent: invoice.taxPercent,
         createdAt: Date(),
         business: invoice.businessProfile,
@@ -897,8 +894,8 @@ struct CreateInvoiceView: View {
                     selectedClient = template.clientRef
                     invoiceNumber = "" // Will be auto-generated on Save
                     currencyCode = template.currencyCode.isEmpty ? "USD" : template.currencyCode
-                    issueDate = Date() // New issue date
-                    dueDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+                    issueDate = template.issueDate
+                    dueDate = template.dueDate
                     periodStart = template.periodStart
                     periodEnd = template.periodEnd
                     taxPercent = template.taxPercent
