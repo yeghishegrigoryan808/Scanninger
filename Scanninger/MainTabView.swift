@@ -3031,6 +3031,9 @@ struct ClientsView: View {
     @State private var selectedClient: ClientModel?
     @State private var clientToDelete: ClientModel?
     @State private var showDeleteConfirmation = false
+    @State private var isSelectionMode = false
+    @State private var selectedClientIDs = Set<PersistentIdentifier>()
+    @State private var showBulkDeleteConfirmation = false
     
     private var filteredClients: [ClientModel] {
         if searchText.isEmpty {
@@ -3072,23 +3075,61 @@ struct ClientsView: View {
                             }
                     )
                 } else {
-                    List {
-                        ForEach(filteredClients) { client in
-                            NavigationLink(destination: EditClientView(client: client)) {
-                                ClientRow(client: client)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    clientToDelete = client
-                                    showDeleteConfirmation = true
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    VStack(spacing: 0) {
+                        List {
+                            ForEach(filteredClients, id: \.persistentModelID) { client in
+                                if isSelectionMode {
+                                    HStack {
+                                        Image(systemName: selectedClientIDs.contains(client.persistentModelID) ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(selectedClientIDs.contains(client.persistentModelID) ? .blue : .gray)
+                                            .font(.title3)
+                                        
+                                        ClientRow(client: client)
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if selectedClientIDs.contains(client.persistentModelID) {
+                                            selectedClientIDs.remove(client.persistentModelID)
+                                        } else {
+                                            selectedClientIDs.insert(client.persistentModelID)
+                                        }
+                                    }
+                                } else {
+                                    NavigationLink(destination: EditClientView(client: client)) {
+                                        ClientRow(client: client)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            clientToDelete = client
+                                            showDeleteConfirmation = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
+                        .listStyle(.plain)
+                        .scrollDismissesKeyboard(.interactively)
+                        
+                        if isSelectionMode && !selectedClientIDs.isEmpty {
+                            Button {
+                                showBulkDeleteConfirmation = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "trash")
+                                    Text("Delete Selected (\(selectedClientIDs.count))")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.red)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                        }
                     }
-                    .listStyle(.plain)
-                    .scrollDismissesKeyboard(.interactively)
                     .background(
                         Color.clear
                             .contentShape(Rectangle())
@@ -3101,10 +3142,25 @@ struct ClientsView: View {
             .navigationTitle("Clients")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateClient = true
-                    } label: {
-                        Image(systemName: "plus")
+                    HStack {
+                        if isSelectionMode {
+                            Button("Cancel") {
+                                isSelectionMode = false
+                                selectedClientIDs.removeAll()
+                            }
+                        } else {
+                            Button("Select") {
+                                isSelectionMode = true
+                            }
+                        }
+                        
+                        if !isSelectionMode {
+                            Button {
+                                showCreateClient = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                        }
                     }
                 }
             }
@@ -3120,6 +3176,16 @@ struct ClientsView: View {
                         deleteClient(client)
                     }
                     clientToDelete = nil
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
+            .alert("Delete selected?", isPresented: $showBulkDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    // Do nothing
+                }
+                Button("Delete", role: .destructive) {
+                    deleteSelectedClients()
                 }
             } message: {
                 Text("This cannot be undone.")
@@ -3146,6 +3212,34 @@ struct ClientsView: View {
             try modelContext.save()
         } catch {
             print("Failed to delete client: \(error)")
+        }
+    }
+    
+    private func deleteSelectedClients() {
+        let clientsToDelete = filteredClients.filter { selectedClientIDs.contains($0.persistentModelID) }
+        
+        withAnimation {
+            // Find all invoices referencing these clients and set clientRef to nil
+            let descriptor = FetchDescriptor<InvoiceModel>()
+            if let allInvoices = try? modelContext.fetch(descriptor) {
+                for invoice in allInvoices {
+                    if let clientRef = invoice.clientRef, clientsToDelete.contains(clientRef) {
+                        invoice.clientRef = nil
+                    }
+                }
+            }
+            
+            for client in clientsToDelete {
+                modelContext.delete(client)
+            }
+        }
+        
+        do {
+            try modelContext.save()
+            isSelectionMode = false
+            selectedClientIDs.removeAll()
+        } catch {
+            print("Failed to delete clients: \(error)")
         }
     }
 }
@@ -3817,6 +3911,9 @@ struct BusinessProfilesView: View {
     @State private var selectedBusiness: BusinessProfileModel?
     @State private var businessToDelete: BusinessProfileModel?
     @State private var showDeleteConfirmation = false
+    @State private var isSelectionMode = false
+    @State private var selectedBusinessIDs = Set<PersistentIdentifier>()
+    @State private var showBulkDeleteConfirmation = false
     
     private var filteredBusinessProfiles: [BusinessProfileModel] {
         if searchText.isEmpty {
@@ -3859,23 +3956,61 @@ struct BusinessProfilesView: View {
                             }
                     )
                 } else {
-                    List {
-                        ForEach(filteredBusinessProfiles) { profile in
-                            NavigationLink(destination: EditBusinessProfileView(business: profile)) {
-                                BusinessProfileRow(profile: profile)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    businessToDelete = profile
-                                    showDeleteConfirmation = true
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    VStack(spacing: 0) {
+                        List {
+                            ForEach(filteredBusinessProfiles, id: \.persistentModelID) { profile in
+                                if isSelectionMode {
+                                    HStack {
+                                        Image(systemName: selectedBusinessIDs.contains(profile.persistentModelID) ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(selectedBusinessIDs.contains(profile.persistentModelID) ? .blue : .gray)
+                                            .font(.title3)
+                                        
+                                        BusinessProfileRow(profile: profile)
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if selectedBusinessIDs.contains(profile.persistentModelID) {
+                                            selectedBusinessIDs.remove(profile.persistentModelID)
+                                        } else {
+                                            selectedBusinessIDs.insert(profile.persistentModelID)
+                                        }
+                                    }
+                                } else {
+                                    NavigationLink(destination: EditBusinessProfileView(business: profile)) {
+                                        BusinessProfileRow(profile: profile)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            businessToDelete = profile
+                                            showDeleteConfirmation = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
+                        .listStyle(.plain)
+                        .scrollDismissesKeyboard(.interactively)
+                        
+                        if isSelectionMode && !selectedBusinessIDs.isEmpty {
+                            Button {
+                                showBulkDeleteConfirmation = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "trash")
+                                    Text("Delete Selected (\(selectedBusinessIDs.count))")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.red)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                        }
                     }
-                    .listStyle(.plain)
-                    .scrollDismissesKeyboard(.interactively)
                     .background(
                         Color.clear
                             .contentShape(Rectangle())
@@ -3888,10 +4023,25 @@ struct BusinessProfilesView: View {
             .navigationTitle("My Business")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateBusinessProfile = true
-                    } label: {
-                        Image(systemName: "plus")
+                    HStack {
+                        if isSelectionMode {
+                            Button("Cancel") {
+                                isSelectionMode = false
+                                selectedBusinessIDs.removeAll()
+                            }
+                        } else {
+                            Button("Select") {
+                                isSelectionMode = true
+                            }
+                        }
+                        
+                        if !isSelectionMode {
+                            Button {
+                                showCreateBusinessProfile = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                        }
                     }
                 }
             }
@@ -3907,6 +4057,16 @@ struct BusinessProfilesView: View {
                         deleteBusinessProfile(business)
                     }
                     businessToDelete = nil
+                }
+            } message: {
+                Text("This cannot be undone.")
+            }
+            .alert("Delete selected?", isPresented: $showBulkDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    // Do nothing
+                }
+                Button("Delete", role: .destructive) {
+                    deleteSelectedBusinessProfiles()
                 }
             } message: {
                 Text("This cannot be undone.")
@@ -3933,6 +4093,34 @@ struct BusinessProfilesView: View {
             try modelContext.save()
         } catch {
             print("Failed to delete business profile: \(error)")
+        }
+    }
+    
+    private func deleteSelectedBusinessProfiles() {
+        let businessesToDelete = filteredBusinessProfiles.filter { selectedBusinessIDs.contains($0.persistentModelID) }
+        
+        withAnimation {
+            // Find all invoices referencing these business profiles and set businessProfile to nil
+            let descriptor = FetchDescriptor<InvoiceModel>()
+            if let allInvoices = try? modelContext.fetch(descriptor) {
+                for invoice in allInvoices {
+                    if let businessProfile = invoice.businessProfile, businessesToDelete.contains(businessProfile) {
+                        invoice.businessProfile = nil
+                    }
+                }
+            }
+            
+            for business in businessesToDelete {
+                modelContext.delete(business)
+            }
+        }
+        
+        do {
+            try modelContext.save()
+            isSelectionMode = false
+            selectedBusinessIDs.removeAll()
+        } catch {
+            print("Failed to delete business profiles: \(error)")
         }
     }
 }
