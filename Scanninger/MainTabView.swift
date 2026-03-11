@@ -3302,6 +3302,14 @@ struct ItemsView: View {
     }
 }
 
+// MARK: - Equal Height Preference Key
+struct CardHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct ReportsView: View {
     @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
     @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
@@ -3315,6 +3323,7 @@ struct ReportsView: View {
     @State private var showClientInvoices = false
     @State private var showPaidInvoices = false
     @State private var showUnpaidInvoices = false
+    @State private var cardHeight: CGFloat = 0
     
     enum ReportPeriod {
         case thisMonth
@@ -3629,9 +3638,9 @@ struct ReportsView: View {
                                             }
                                         }
                                         
-                                        HStack(alignment: .top, spacing: 12) {
+                                        HStack(alignment: .top, spacing: 16) {
                                             // Paid Revenue by Currency
-                                            VStack(alignment: .leading, spacing: 8) {
+                                            VStack(alignment: .leading, spacing: 12) {
                                                 HStack {
                                                     Image(systemName: "checkmark.circle")
                                                         .foregroundColor(.green)
@@ -3640,11 +3649,11 @@ struct ReportsView: View {
                                                         .font(.caption)
                                                         .foregroundColor(.secondary)
                                                 }
+                                                
                                                 if paidRevenueByCurrency.isEmpty {
                                                     Text("No paid invoices")
                                                         .font(.subheadline)
                                                         .foregroundColor(.secondary)
-                                                        .padding(.top, 4)
                                                 } else {
                                                     VStack(alignment: .leading, spacing: 6) {
                                                         ForEach(paidRevenueByCurrency, id: \.currencyCode) { item in
@@ -3656,14 +3665,22 @@ struct ReportsView: View {
                                                     }
                                                 }
                                             }
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .frame(minHeight: 80)
+                                            .frame(maxWidth: .infinity, alignment: .topLeading)
                                             .padding()
                                             .background(Color(.systemGray6))
                                             .cornerRadius(12)
+                                            .background(
+                                                GeometryReader { geometry in
+                                                    Color.clear.preference(
+                                                        key: CardHeightPreferenceKey.self,
+                                                        value: geometry.size.height
+                                                    )
+                                                }
+                                            )
+                                            .frame(height: cardHeight > 0 ? cardHeight : nil, alignment: .topLeading)
                                             
                                             // Unpaid Revenue by Currency
-                                            VStack(alignment: .leading, spacing: 8) {
+                                            VStack(alignment: .leading, spacing: 12) {
                                                 HStack {
                                                     Image(systemName: "exclamationmark.circle")
                                                         .foregroundColor(.orange)
@@ -3672,11 +3689,11 @@ struct ReportsView: View {
                                                         .font(.caption)
                                                         .foregroundColor(.secondary)
                                                 }
+                                                
                                                 if unpaidRevenueByCurrency.isEmpty {
                                                     Text("No unpaid invoices")
                                                         .font(.subheadline)
                                                         .foregroundColor(.secondary)
-                                                        .padding(.top, 4)
                                                 } else {
                                                     VStack(alignment: .leading, spacing: 6) {
                                                         ForEach(unpaidRevenueByCurrency, id: \.currencyCode) { item in
@@ -3688,11 +3705,22 @@ struct ReportsView: View {
                                                     }
                                                 }
                                             }
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .frame(minHeight: 80)
+                                            .frame(maxWidth: .infinity, alignment: .topLeading)
                                             .padding()
                                             .background(Color(.systemGray6))
                                             .cornerRadius(12)
+                                            .background(
+                                                GeometryReader { geometry in
+                                                    Color.clear.preference(
+                                                        key: CardHeightPreferenceKey.self,
+                                                        value: geometry.size.height
+                                                    )
+                                                }
+                                            )
+                                            .frame(height: cardHeight > 0 ? cardHeight : nil, alignment: .topLeading)
+                                        }
+                                        .onPreferenceChange(CardHeightPreferenceKey.self) { height in
+                                            cardHeight = height
                                         }
                                     }
                                 } else {
