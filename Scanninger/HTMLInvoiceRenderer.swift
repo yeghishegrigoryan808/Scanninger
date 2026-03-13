@@ -91,17 +91,38 @@ struct HTMLInvoiceRenderer {
         let formattedDiscount = formatCurrency(discount, currencyCode: currencyCode)
         let formattedTotal = formatCurrency(total, currencyCode: currencyCode)
         
+        // Get current business profile data (prefer current profile over snapshot)
+        let currentBusinessName = invoice.businessProfile?.name ?? invoice.businessName
+        let currentBusinessAddress = invoice.businessProfile?.address ?? invoice.businessAddress
+        let currentBusinessEmail = invoice.businessProfile?.email ?? invoice.businessEmail
+        let currentBusinessPhone = invoice.businessProfile?.phone ?? invoice.businessPhone
+        
+        // Get current client profile data (prefer current profile over snapshot)
+        let currentClientName = invoice.clientRef?.name ?? invoice.clientName
+        let currentClientAddress = invoice.clientRef?.address ?? invoice.clientAddress
+        let currentClientEmail = invoice.clientRef?.email ?? invoice.clientEmail
+        let currentClientPhone = invoice.clientRef?.phone ?? invoice.clientPhone
+        
+        // Build conditional blocks for optional fields
+        let fromAddressBlock = currentBusinessAddress.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessAddress))</div>"
+        let fromEmailBlock = currentBusinessEmail.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessEmail))</div>"
+        let fromPhoneBlock = currentBusinessPhone.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessPhone))</div>"
+        
+        let billToAddressBlock = currentClientAddress.isEmpty ? "" : "<div>\(escapeHTML(currentClientAddress))</div>"
+        let billToEmailBlock = currentClientEmail.isEmpty ? "" : "<div>\(escapeHTML(currentClientEmail))</div>"
+        let billToPhoneBlock = currentClientPhone.isEmpty ? "" : "<div>\(escapeHTML(currentClientPhone))</div>"
+        
         // Replace placeholders
         var html = template
-        html = html.replacingOccurrences(of: "{{fromName}}", with: escapeHTML(invoice.displayBusinessName))
-        html = html.replacingOccurrences(of: "{{fromAddress}}", with: escapeHTML(invoice.displayBusinessAddress))
-        html = html.replacingOccurrences(of: "{{fromEmail}}", with: escapeHTML(invoice.displayBusinessEmail))
-        html = html.replacingOccurrences(of: "{{fromPhone}}", with: escapeHTML(invoice.displayBusinessPhone))
+        html = html.replacingOccurrences(of: "{{fromName}}", with: escapeHTML(currentBusinessName))
+        html = html.replacingOccurrences(of: "{{fromAddress}}", with: fromAddressBlock)
+        html = html.replacingOccurrences(of: "{{fromEmail}}", with: fromEmailBlock)
+        html = html.replacingOccurrences(of: "{{fromPhone}}", with: fromPhoneBlock)
         
-        html = html.replacingOccurrences(of: "{{billToName}}", with: escapeHTML(invoice.clientName))
-        html = html.replacingOccurrences(of: "{{billToAddress}}", with: escapeHTML(invoice.clientAddress))
-        html = html.replacingOccurrences(of: "{{billToEmail}}", with: escapeHTML(invoice.clientEmail))
-        html = html.replacingOccurrences(of: "{{billToPhone}}", with: escapeHTML(invoice.clientPhone))
+        html = html.replacingOccurrences(of: "{{billToName}}", with: escapeHTML(currentClientName))
+        html = html.replacingOccurrences(of: "{{billToAddress}}", with: billToAddressBlock)
+        html = html.replacingOccurrences(of: "{{billToEmail}}", with: billToEmailBlock)
+        html = html.replacingOccurrences(of: "{{billToPhone}}", with: billToPhoneBlock)
         
         html = html.replacingOccurrences(of: "{{invoiceNumber}}", with: escapeHTML(invoice.number))
         html = html.replacingOccurrences(of: "{{invoiceDate}}", with: escapeHTML(invoiceDate))
