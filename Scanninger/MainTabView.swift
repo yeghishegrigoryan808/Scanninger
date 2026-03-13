@@ -1871,6 +1871,7 @@ enum PDFTemplate: String, CaseIterable {
     case classic = "Classic"
     case modern = "Modern"
     case minimal = "Minimal"
+    case html = "HTML"
 }
 
 // MARK: - PDF Preview Item
@@ -1888,6 +1889,8 @@ struct TemplateSelectionView: View {
     @State private var pdfURL: URL?
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
+    @State private var htmlContent: String?
+    @State private var isGeneratingPDF = false
     
     private let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -1897,7 +1900,23 @@ struct TemplateSelectionView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                if let pdfURL = pdfURL {
+                if let htmlContent = htmlContent {
+                    // HTML Preview
+                    HTMLInvoicePreviewSheet(
+                        html: htmlContent,
+                        invoice: invoice,
+                        isGeneratingPDF: $isGeneratingPDF,
+                        onBack: {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                self.htmlContent = nil
+                            }
+                        }
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
+                } else if let pdfURL = pdfURL {
                     PDFPreviewView(pdfURL: pdfURL, onBack: {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             self.pdfURL = nil
@@ -1946,30 +1965,66 @@ struct TemplateSelectionView: View {
     }
     
     private func generatePDF(for template: PDFTemplate) {
-        do {
-            let url = try generateInvoicePDF(invoice: invoice, template: template)
-            
-            // Verify file exists and has content
-            guard FileManager.default.fileExists(atPath: url.path) else {
-                errorMessage = "PDF file was not created"
+        if template == .html {
+            // Load and preview HTML template
+            do {
+                let html = try HTMLInvoiceRenderer.renderInvoice(invoice)
+                print("✅ HTML rendered, showing preview")
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    htmlContent = html
+                }
+            } catch let error as HTMLRenderError {
+                // Use fallback HTML with error message
+                let fallbackHTML = HTMLRenderError.fallbackHTML(error: error)
+                print("⚠️ Using fallback HTML due to error: \(error.localizedDescription)")
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    htmlContent = fallbackHTML
+                }
+                errorMessage = "Template loading error: \(error.localizedDescription)"
                 showErrorAlert = true
-                return
-            }
-            
-            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-            let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            if fileSize == 0 {
-                errorMessage = "PDF file is empty"
+            } catch {
+                let fallbackHTML = """
+                <!DOCTYPE html>
+                <html><head><meta charset="UTF-8"><title>Error</title></head>
+                <body style="font-family: -apple-system; padding: 40px;">
+                <h1 style="color: red;">Error</h1>
+                <p>\(error.localizedDescription)</p>
+                </body></html>
+                """
+                print("❌ Error rendering HTML: \(error.localizedDescription)")
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    htmlContent = fallbackHTML
+                }
+                errorMessage = "Failed to load HTML template: \(error.localizedDescription)"
                 showErrorAlert = true
-                return
             }
-            
-            withAnimation(.easeInOut(duration: 0.25)) {
-                pdfURL = url
+        } else {
+            // Generate PDF for other templates
+            do {
+                let url = try generateInvoicePDF(invoice: invoice, template: template)
+                
+                // Verify file exists and has content
+                guard FileManager.default.fileExists(atPath: url.path) else {
+                    errorMessage = "PDF file was not created"
+                    showErrorAlert = true
+                    return
+                }
+                
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+                if fileSize == 0 {
+                    errorMessage = "PDF file is empty"
+                    showErrorAlert = true
+                    return
+                }
+                
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    pdfURL = url
+                }
+            } catch {
+                errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
+                showErrorAlert = true
             }
-        } catch {
-            errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
-            showErrorAlert = true
         }
     }
 }
@@ -2024,6 +2079,8 @@ struct TemplatePreview: View {
                 ModernPreview()
             case .minimal:
                 MinimalPreview()
+            case .html:
+                HTMLPreview()
             }
         }
         .padding(8)
@@ -2188,6 +2245,67 @@ struct MinimalPreview: View {
     }
 }
 
+// MARK: - HTML Preview
+struct HTMLPreview: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // HTML-style header
+            HStack {
+                Rectangle()
+                    .fill(Color(red: 0.3, green: 0.65, blue: 0.79))
+                    .frame(width: 50, height: 8)
+                Spacer()
+            }
+            
+            Spacer()
+                .frame(height: 6)
+            
+            // Title
+            Rectangle()
+                .fill(Color.primary.opacity(0.9))
+                .frame(height: 6)
+                .frame(maxWidth: 100)
+            
+            Spacer()
+                .frame(height: 8)
+            
+            // Grid-style items
+            VStack(spacing: 3) {
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(Color(red: 0.3, green: 0.65, blue: 0.79).opacity(0.3))
+                        .frame(width: 40, height: 3)
+                    Spacer()
+                    Rectangle()
+                        .fill(Color(red: 0.3, green: 0.65, blue: 0.79).opacity(0.3))
+                        .frame(width: 20, height: 3)
+                }
+                ForEach(0..<3) { _ in
+                    HStack(spacing: 4) {
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(width: 40, height: 2)
+                        Spacer()
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(width: 20, height: 2)
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            // Total section
+            HStack {
+                Spacer()
+                Rectangle()
+                    .fill(Color(red: 0.3, green: 0.65, blue: 0.79))
+                    .frame(width: 50, height: 4)
+            }
+        }
+    }
+}
+
 // MARK: - PDF Preview View
 struct PDFPreviewView: View {
     let pdfURL: URL
@@ -2251,7 +2369,48 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     let fileName = "Invoice_\(invoice.number.replacingOccurrences(of: " ", with: "_")).pdf"
     let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
     
-    // Template-specific styling
+    // Handle HTML template separately - uses HTML renderer instead of UIGraphicsPDFRenderer
+    if template == .html {
+        // Render HTML and generate PDF from it
+        let html = try HTMLInvoiceRenderer.renderInvoice(invoice)
+        
+        // Use semaphore to wait for async PDF generation
+        // Note: This is a synchronous wrapper for the async generatePDFFromHTML function
+        let semaphore = DispatchSemaphore(value: 0)
+        var resultURL: URL?
+        var resultError: Error?
+        
+        // Run PDF generation on a background queue to avoid blocking
+        Task.detached {
+            do {
+                let url = try await generatePDFFromHTML(html, invoiceNumber: invoice.number)
+                resultURL = url
+                semaphore.signal()
+            } catch {
+                resultError = error
+                semaphore.signal()
+            }
+        }
+        
+        // Wait for PDF generation to complete (with timeout)
+        let timeout = semaphore.wait(timeout: .now() + 30)
+        
+        if timeout == .timedOut {
+            throw NSError(domain: "PDFGeneration", code: 4, userInfo: [NSLocalizedDescriptionKey: "PDF generation timed out"])
+        }
+        
+        if let error = resultError {
+            throw error
+        }
+        
+        guard let url = resultURL else {
+            throw NSError(domain: "PDFGeneration", code: 5, userInfo: [NSLocalizedDescriptionKey: "PDF generation returned nil URL"])
+        }
+        
+        return url
+    }
+    
+    // Template-specific styling for classic/modern/minimal (HTML handled above)
     let headerFontSize: CGFloat
     let titleFontSize: CGFloat
     let bodyFontSize: CGFloat
@@ -2273,6 +2432,9 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         titleFontSize = 20
         bodyFontSize = 10
         spacing = 12
+    case .html:
+        // HTML case is handled above, this should never be reached
+        fatalError("HTML template should have been handled earlier in the function")
     }
     
     let data = renderer.pdfData { context in
@@ -2489,6 +2651,78 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     }
     
     return fileURL
+}
+
+// MARK: - HTML Invoice Preview Sheet
+struct HTMLInvoicePreviewSheet: View {
+    let html: String
+    let invoice: InvoiceModel
+    @Binding var isGeneratingPDF: Bool
+    let onBack: () -> Void
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
+    @State private var shareItem: ShareItem?
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                HTMLInvoicePreviewView(html: html)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                if isGeneratingPDF {
+                    Color.black.opacity(0.3)
+                        .edgesIgnoringSafeArea(.all)
+                    ProgressView("Generating PDF...")
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(10)
+                }
+            }
+            .navigationTitle("Invoice Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") {
+                        onBack()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Export PDF") {
+                        exportPDF()
+                    }
+                    .disabled(isGeneratingPDF)
+                }
+            }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
+            }
+            .sheet(item: $shareItem) { item in
+                ShareSheet(items: [item.url])
+            }
+        }
+    }
+    
+    private func exportPDF() {
+        isGeneratingPDF = true
+        
+        Task {
+            do {
+                let url = try await generatePDFFromHTML(html, invoiceNumber: invoice.number)
+                await MainActor.run {
+                    isGeneratingPDF = false
+                    shareItem = ShareItem(url: url)
+                }
+            } catch {
+                await MainActor.run {
+                    isGeneratingPDF = false
+                    errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Share Sheet
