@@ -66,7 +66,17 @@ struct HTMLInvoiceRenderer {
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .long
         let invoiceDate = dateFormatter.string(from: invoice.issueDate)
-        let dueDate = dateFormatter.string(from: invoice.dueDate)
+        
+        // Format invoice period block (only if both dates exist)
+        let invoicePeriodBlock: String
+        if let periodStart = invoice.periodStart, let periodEnd = invoice.periodEnd {
+            let shortFormatter = DateFormatter()
+            shortFormatter.dateFormat = "MMM d, yyyy"
+            let periodText = "\(shortFormatter.string(from: periodStart)) – \(shortFormatter.string(from: periodEnd))"
+            invoicePeriodBlock = "<div><b>Invoice Period</b> \(escapeHTML(periodText))</div>"
+        } else {
+            invoicePeriodBlock = ""
+        }
         
         // Calculate amounts
         let subtotal = invoice.subtotal
@@ -95,7 +105,7 @@ struct HTMLInvoiceRenderer {
         
         html = html.replacingOccurrences(of: "{{invoiceNumber}}", with: escapeHTML(invoice.number))
         html = html.replacingOccurrences(of: "{{invoiceDate}}", with: escapeHTML(invoiceDate))
-        html = html.replacingOccurrences(of: "{{dueDate}}", with: escapeHTML(dueDate))
+        html = html.replacingOccurrences(of: "{{invoicePeriodBlock}}", with: invoicePeriodBlock)
         
         html = html.replacingOccurrences(of: "{{itemsRows}}", with: itemsRows)
         
@@ -104,11 +114,9 @@ struct HTMLInvoiceRenderer {
         html = html.replacingOccurrences(of: "{{discount}}", with: escapeHTML(formattedDiscount))
         html = html.replacingOccurrences(of: "{{total}}", with: escapeHTML(formattedTotal))
         
-        // Notes and payment details (empty if not available)
+        // Notes (empty if not available)
         let notes = "" // No notes field in current model
-        let paymentDetails = invoice.isPaid && invoice.paidAt != nil ? "Paid on \(dateFormatter.string(from: invoice.paidAt!))" : ""
         html = html.replacingOccurrences(of: "{{notes}}", with: escapeHTML(notes))
-        html = html.replacingOccurrences(of: "{{paymentDetails}}", with: escapeHTML(paymentDetails))
         
         // Verify all placeholders were replaced
         if html.contains("{{") {

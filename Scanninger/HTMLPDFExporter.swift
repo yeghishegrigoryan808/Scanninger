@@ -44,9 +44,12 @@ class HTMLPDFExporter: NSObject {
         print("📄 [HTMLPDFExporter] Starting PDF export for file: \(fileName)")
         print("📄 [HTMLPDFExporter] HTML content length: \(html.count) characters")
         
-        // Create off-screen WKWebView
+        // Create off-screen WKWebView with A4 dimensions (210mm x 297mm at 72 DPI = 595 x 842 points)
+        // Using slightly larger frame to accommodate content
+        let a4Width: CGFloat = 595  // 210mm at 72 DPI
+        let a4Height: CGFloat = 842 // 297mm at 72 DPI
         let configuration = WKWebViewConfiguration()
-        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 900, height: 1200), configuration: configuration)
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: a4Width, height: a4Height), configuration: configuration)
         webView.navigationDelegate = self
         webView.backgroundColor = .white
         

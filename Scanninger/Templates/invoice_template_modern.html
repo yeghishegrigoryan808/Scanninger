@@ -6,19 +6,43 @@
 
 <style>
 
+@page {
+    size: A4 portrait;
+    margin: 0;
+}
+
+@media print {
+    body {
+        margin: 0;
+        padding: 0;
+        background: white;
+    }
+    
+    .invoice {
+        margin: 0;
+        padding: 20mm;
+        box-shadow: none;
+        border-radius: 0;
+    }
+}
+
 body{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial;
     background:#f4f6f8;
     padding:40px;
+    margin: 0;
 }
 
 .invoice{
-    max-width:900px;
+    max-width:210mm;
+    width: 210mm;
+    min-height: 297mm;
     margin:auto;
     background:white;
-    padding:50px;
+    padding:20mm;
     border-radius:12px;
     box-shadow:0 10px 30px rgba(0,0,0,0.08);
+    box-sizing: border-box;
 }
 
 .header{
@@ -161,8 +185,8 @@ invoice
 <div class="invoice-info">
 
 <div><b>Invoice #</b> {{invoiceNumber}}</div>
-<div><b>Date</b> {{invoiceDate}}</div>
-<div><b>Due Date</b> {{dueDate}}</div>
+<div><b>Issue Date</b> {{invoiceDate}}</div>
+{{invoicePeriodBlock}}
 
 </div>
 
@@ -219,10 +243,6 @@ invoice
 <div class="footer">
 
 <div>{{notes}}</div>
-
-<br>
-
-<div>{{paymentDetails}}</div>
 
 </div>
 
