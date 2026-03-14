@@ -13,7 +13,7 @@ import SwiftUI
 struct HTMLInvoiceRenderer {
     
     /// Renders an invoice using the HTML template
-    static func renderInvoice(_ invoice: InvoiceModel) throws -> String {
+    static func renderInvoice(_ invoice: InvoiceModel, theme: InvoiceColorTheme? = nil) throws -> String {
         // Load template from bundle - try multiple paths
         var template: String?
         var lastError: Error?
@@ -127,6 +127,13 @@ struct HTMLInvoiceRenderer {
         html = html.replacingOccurrences(of: "{{invoiceNumber}}", with: escapeHTML(invoice.number))
         html = html.replacingOccurrences(of: "{{invoiceDate}}", with: escapeHTML(invoiceDate))
         html = html.replacingOccurrences(of: "{{invoicePeriodBlock}}", with: invoicePeriodBlock)
+        
+        // Apply theme colors (default to ocean if not provided)
+        let theme = theme ?? .ocean
+        html = html.replacingOccurrences(of: "{{accentColor}}", with: theme.accentColor)
+        html = html.replacingOccurrences(of: "{{accentSoftColor}}", with: theme.accentSoftColor)
+        html = html.replacingOccurrences(of: "{{titleColor}}", with: theme.titleColor)
+        html = html.replacingOccurrences(of: "{{borderColor}}", with: theme.borderColor)
         
         html = html.replacingOccurrences(of: "{{itemsRows}}", with: itemsRows)
         

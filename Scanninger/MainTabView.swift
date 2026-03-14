@@ -11,6 +11,7 @@ import UIKit
 import PDFKit
 import PhotosUI
 import Charts
+import WebKit
 
 struct MainTabView: View {
     var body: some View {
@@ -114,6 +115,10 @@ final class InvoiceModel {
     var periodStart: Date?
     var periodEnd: Date?
     
+    // Design preferences (optional for migration compatibility)
+    var templateRaw: String?
+    var themeRaw: String?
+    
     // Client snapshot fields (stored on invoice)
     var clientAddress: String
     var clientPhone: String
@@ -134,7 +139,7 @@ final class InvoiceModel {
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessTaxId: String = "", businessLogoData: Data? = nil, periodStart: Date? = nil, periodEnd: Date? = nil) {
+    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessTaxId: String = "", businessLogoData: Data? = nil, periodStart: Date? = nil, periodEnd: Date? = nil, templateRaw: String? = nil, themeRaw: String? = nil) {
         self.number = number
         self.clientName = clientName
         self.statusRaw = statusRaw
@@ -158,6 +163,8 @@ final class InvoiceModel {
         self.businessLogoData = businessLogoData
         self.periodStart = periodStart
         self.periodEnd = periodEnd
+        self.templateRaw = templateRaw
+        self.themeRaw = themeRaw
     }
     
     var status: InvoiceStatus {
@@ -200,6 +207,30 @@ final class InvoiceModel {
     
     var displayBusinessLogoData: Data? {
         businessLogoData
+    }
+    
+    var selectedTemplate: PDFTemplate {
+        get {
+            guard let raw = templateRaw, let template = PDFTemplate(rawValue: raw) else {
+                return .html
+            }
+            return template
+        }
+        set {
+            templateRaw = newValue.rawValue
+        }
+    }
+    
+    var selectedTheme: InvoiceColorTheme {
+        get {
+            guard let raw = themeRaw, let theme = InvoiceColorTheme(rawValue: raw) else {
+                return .ocean
+            }
+            return theme
+        }
+        set {
+            themeRaw = newValue.rawValue
+        }
     }
     
     var subtotal: Double {
@@ -274,31 +305,33 @@ func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allIn
     }
     
     // Create new invoice with all snapshot fields
-    let newInvoice = InvoiceModel(
-        number: newInvoiceNumber,
-        clientName: invoice.clientName,
-        statusRaw: "Unpaid",
-        issueDate: invoice.issueDate,
-        dueDate: invoice.dueDate,
-        taxPercent: invoice.taxPercent,
-        createdAt: Date(),
-        business: invoice.businessProfile,
-        items: newLineItems,
-        paidAt: nil,
-        currencyCode: invoice.currencyCode,
-        clientAddress: invoice.clientAddress,
-        clientPhone: invoice.clientPhone,
-        clientEmail: invoice.clientEmail,
-        clientTaxId: invoice.clientTaxId,
-        businessName: invoice.businessName,
-        businessAddress: invoice.businessAddress,
-        businessPhone: invoice.businessPhone,
-        businessEmail: invoice.businessEmail,
-        businessTaxId: invoice.businessTaxId,
-        businessLogoData: invoice.businessLogoData,
-        periodStart: invoice.periodStart,
-        periodEnd: invoice.periodEnd
-    )
+        let newInvoice = InvoiceModel(
+            number: newInvoiceNumber,
+            clientName: invoice.clientName,
+            statusRaw: "Unpaid",
+            issueDate: invoice.issueDate,
+            dueDate: invoice.dueDate,
+            taxPercent: invoice.taxPercent,
+            createdAt: Date(),
+            business: invoice.businessProfile,
+            items: newLineItems,
+            paidAt: nil,
+            currencyCode: invoice.currencyCode,
+            clientAddress: invoice.clientAddress,
+            clientPhone: invoice.clientPhone,
+            clientEmail: invoice.clientEmail,
+            clientTaxId: invoice.clientTaxId,
+            businessName: invoice.businessName,
+            businessAddress: invoice.businessAddress,
+            businessPhone: invoice.businessPhone,
+            businessEmail: invoice.businessEmail,
+            businessTaxId: invoice.businessTaxId,
+            businessLogoData: invoice.businessLogoData,
+            periodStart: invoice.periodStart,
+            periodEnd: invoice.periodEnd,
+            templateRaw: invoice.templateRaw,
+            themeRaw: invoice.themeRaw
+        )
     
     // Set relationships
     newInvoice.businessProfile = invoice.businessProfile
@@ -1131,7 +1164,9 @@ struct CreateInvoiceView: View {
             paidAt: nil,
             currencyCode: currencyCode,
             periodStart: periodStart,
-            periodEnd: periodEnd
+            periodEnd: periodEnd,
+            templateRaw: nil,
+            themeRaw: nil
         )
         
         // Assign snapshot fields
@@ -1768,7 +1803,7 @@ struct InvoiceDetailView: View {
             }
         }
         .sheet(isPresented: $showTemplateSelection) {
-            TemplateSelectionView(invoice: invoice)
+            InvoiceDesignPickerView(invoice: invoice)
         }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: [item.url])
@@ -1874,10 +1909,362 @@ enum PDFTemplate: String, CaseIterable {
     case html = "HTML"
 }
 
+// MARK: - Invoice Color Theme
+enum InvoiceColorTheme: String, CaseIterable, Identifiable {
+    case ocean = "Ocean"
+    case forest = "Forest"
+    case sunset = "Sunset"
+    case slate = "Slate"
+    case amethyst = "Amethyst"
+    
+    var id: String { rawValue }
+    
+    var accentColor: String {
+        switch self {
+        case .ocean: return "#4da6c9"
+        case .forest: return "#2d8659"
+        case .sunset: return "#e67e22"
+        case .slate: return "#5a6c7d"
+        case .amethyst: return "#9b59b6"
+        }
+    }
+    
+    var accentSoftColor: String {
+        switch self {
+        case .ocean: return "#e5f2f7"
+        case .forest: return "#e8f5e9"
+        case .sunset: return "#fef3e7"
+        case .slate: return "#f0f2f4"
+        case .amethyst: return "#f4e6f9"
+        }
+    }
+    
+    var titleColor: String {
+        switch self {
+        case .ocean: return "#2c5f7a"
+        case .forest: return "#1e5d3a"
+        case .sunset: return "#b85a1a"
+        case .slate: return "#3d4a56"
+        case .amethyst: return "#7d4a9e"
+        }
+    }
+    
+    var borderColor: String {
+        switch self {
+        case .ocean: return "#c8e0eb"
+        case .forest: return "#c4d9c9"
+        case .sunset: return "#f5d4b3"
+        case .slate: return "#d0d5da"
+        case .amethyst: return "#e1c4f0"
+        }
+    }
+    
+    var displayName: String { rawValue }
+}
+
 // MARK: - PDF Preview Item
 struct PDFPreviewItem: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+// MARK: - Invoice Design Picker View
+struct InvoiceDesignPickerView: View {
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) var modelContext
+    let invoice: InvoiceModel
+    
+    @State private var selectedTemplate: PDFTemplate
+    @State private var selectedTheme: InvoiceColorTheme
+    @State private var previewHTML: String?
+    @State private var isGeneratingPreview = false
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
+    @State private var showPreview = false
+    @State private var previewPDFURL: URL?
+    
+    init(invoice: InvoiceModel) {
+        self.invoice = invoice
+        _selectedTemplate = State(initialValue: invoice.selectedTemplate)
+        _selectedTheme = State(initialValue: invoice.selectedTheme)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Live Preview Section
+                if let html = previewHTML {
+                    ScrollView {
+                        HTMLPreviewView(html: html)
+                            .frame(minHeight: 400)
+                            .padding()
+                    }
+                    .frame(maxHeight: 400)
+                    .background(Color(.systemGray6))
+                } else {
+                    ProgressView("Generating preview...")
+                        .frame(maxHeight: 400)
+                        .frame(maxWidth: .infinity)
+                        .background(Color(.systemGray6))
+                }
+                
+                Divider()
+                
+                // Template Selection Row
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Layout")
+                        .font(.headline)
+                        .padding(.horizontal)
+                        .padding(.top, 16)
+                    
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(PDFTemplate.allCases, id: \.self) { template in
+                                TemplateOptionCard(
+                                    title: template.rawValue,
+                                    isSelected: selectedTemplate == template,
+                                    onTap: {
+                                        selectedTemplate = template
+                                        updatePreview()
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                Divider()
+                
+                // Theme Selection Row
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Color Theme")
+                        .font(.headline)
+                        .padding(.horizontal)
+                        .padding(.top, 16)
+                    
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(InvoiceColorTheme.allCases) { theme in
+                                ThemeOptionCard(
+                                    theme: theme,
+                                    isSelected: selectedTheme == theme,
+                                    onTap: {
+                                        selectedTheme = theme
+                                        updatePreview()
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                
+                Spacer()
+                
+                // Bottom Actions
+                HStack(spacing: 16) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                    
+                    Button("Continue") {
+                        saveAndContinue()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
+                }
+                .padding()
+                .background(Color(.systemBackground))
+            }
+            .navigationTitle("Design Invoice")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                updatePreview()
+            }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
+            }
+            .sheet(isPresented: $showPreview) {
+                if let html = previewHTML {
+                    HTMLInvoicePreviewSheet(
+                        html: html,
+                        invoice: invoice,
+                        isGeneratingPDF: .constant(false),
+                        onBack: {
+                            showPreview = false
+                        }
+                    )
+                } else if let url = previewPDFURL {
+                    PDFPreviewView(pdfURL: url, onBack: {
+                        showPreview = false
+                    })
+                }
+            }
+        }
+    }
+    
+    private func updatePreview() {
+        guard selectedTemplate == .html else {
+            // For non-HTML templates, we'll show a placeholder or skip preview
+            previewHTML = nil
+            return
+        }
+        
+        isGeneratingPreview = true
+        DispatchQueue.main.async {
+            do {
+                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme)
+                previewHTML = html
+                isGeneratingPreview = false
+            } catch {
+                errorMessage = "Failed to generate preview: \(error.localizedDescription)"
+                showErrorAlert = true
+                isGeneratingPreview = false
+            }
+        }
+    }
+    
+    private func saveAndContinue() {
+        // Save selections to invoice
+        invoice.selectedTemplate = selectedTemplate
+        invoice.selectedTheme = selectedTheme
+        
+        // Generate preview
+        if selectedTemplate == .html {
+            do {
+                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme)
+                previewHTML = html
+                previewPDFURL = nil
+                showPreview = true
+            } catch {
+                errorMessage = "Failed to generate preview: \(error.localizedDescription)"
+                showErrorAlert = true
+            }
+        } else {
+            do {
+                let url = try generateInvoicePDF(invoice: invoice, template: selectedTemplate)
+                previewPDFURL = url
+                previewHTML = nil
+                showPreview = true
+            } catch {
+                errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
+                showErrorAlert = true
+            }
+        }
+    }
+}
+
+// MARK: - Template Option Card
+struct TemplateOptionCard: View {
+    let title: String
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                Image(systemName: "doc.text.fill")
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .blue : .secondary)
+                
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            }
+            .frame(width: 100, height: 80)
+            .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Theme Option Card
+struct ThemeOptionCard: View {
+    let theme: InvoiceColorTheme
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                // Color swatch
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color(hex: theme.accentColor) ?? .blue)
+                        .frame(width: 20, height: 20)
+                    Circle()
+                        .fill(Color(hex: theme.accentSoftColor) ?? .gray)
+                        .frame(width: 20, height: 20)
+                }
+                
+                Text(theme.displayName)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+            }
+            .frame(width: 100, height: 80)
+            .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - HTML Preview View
+struct HTMLPreviewView: UIViewRepresentable {
+    let html: String
+    
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        return webView
+    }
+    
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        webView.loadHTMLString(html, baseURL: Bundle.main.bundleURL)
+    }
+}
+
+// MARK: - Color Extension
+extension Color {
+    init?(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            return nil
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
 }
 
 // MARK: - Template Selection View
@@ -1968,7 +2355,7 @@ struct TemplateSelectionView: View {
         if template == .html {
             // Load and preview HTML template
             do {
-                let html = try HTMLInvoiceRenderer.renderInvoice(invoice)
+                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme)
                 print("✅ HTML rendered, showing preview")
                 withAnimation(.easeInOut(duration: 0.25)) {
                     htmlContent = html
@@ -2372,7 +2759,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     // Handle HTML template separately - uses HTML renderer instead of UIGraphicsPDFRenderer
     if template == .html {
         // Render HTML and generate PDF from it
-        let html = try HTMLInvoiceRenderer.renderInvoice(invoice)
+                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme)
         
         // Use semaphore to wait for async PDF generation
         // Note: This is a synchronous wrapper for the async generatePDFFromHTML function
