@@ -212,7 +212,7 @@ final class InvoiceModel {
     var selectedTemplate: PDFTemplate {
         get {
             guard let raw = templateRaw, let template = PDFTemplate(rawValue: raw) else {
-                return .html
+                return .professional
             }
             return template
         }
@@ -1903,10 +1903,17 @@ struct DetailRow: View {
 
 // MARK: - PDF Template
 enum PDFTemplate: String, CaseIterable {
-    case classic = "Classic"
-    case modern = "Modern"
-    case minimal = "Minimal"
-    case html = "HTML"
+    case professional = "Professional"
+    case elegant = "Elegant"
+    
+    var templateFileName: String {
+        switch self {
+        case .professional:
+            return "invoice_template_modern"
+        case .elegant:
+            return "invoice_template_elegant_02"
+        }
+    }
 }
 
 // MARK: - Invoice Color Theme
@@ -1985,7 +1992,14 @@ struct InvoiceDesignPickerView: View {
     
     init(invoice: InvoiceModel) {
         self.invoice = invoice
-        _selectedTemplate = State(initialValue: invoice.selectedTemplate)
+        // Default to HTML template if old/invalid template is selected
+        let template: PDFTemplate
+        if invoice.selectedTemplate == .professional || invoice.selectedTemplate == .elegant {
+            template = invoice.selectedTemplate
+        } else {
+            template = .professional
+        }
+        _selectedTemplate = State(initialValue: template)
         _selectedTheme = State(initialValue: invoice.selectedTheme)
     }
     
@@ -2010,7 +2024,7 @@ struct InvoiceDesignPickerView: View {
                 
                 Divider()
                 
-                // Template Selection Row
+                // Template Selection Row (HTML templates)
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Layout")
                         .font(.headline)
@@ -2019,7 +2033,8 @@ struct InvoiceDesignPickerView: View {
                     
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(PDFTemplate.allCases, id: \.self) { template in
+                            // Show supported HTML templates
+                            ForEach([PDFTemplate.professional, PDFTemplate.elegant], id: \.self) { template in
                                 TemplateOptionCard(
                                     title: template.rawValue,
                                     isSelected: selectedTemplate == template,
@@ -2082,6 +2097,10 @@ struct InvoiceDesignPickerView: View {
             .navigationTitle("Design Invoice")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
+                // Ensure template is a valid HTML template
+                if selectedTemplate != .professional && selectedTemplate != .elegant {
+                    selectedTemplate = .professional
+                }
                 updatePreview()
             }
             .alert("Error", isPresented: $showErrorAlert) {
@@ -2109,8 +2128,8 @@ struct InvoiceDesignPickerView: View {
     }
     
     private func updatePreview() {
-        guard selectedTemplate == .html else {
-            // For non-HTML templates, we'll show a placeholder or skip preview
+        // Only HTML templates are supported
+        guard selectedTemplate == .professional || selectedTemplate == .elegant else {
             previewHTML = nil
             return
         }
@@ -2118,7 +2137,7 @@ struct InvoiceDesignPickerView: View {
         isGeneratingPreview = true
         DispatchQueue.main.async {
             do {
-                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme)
+                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme, template: selectedTemplate)
                 previewHTML = html
                 isGeneratingPreview = false
             } catch {
@@ -2130,31 +2149,19 @@ struct InvoiceDesignPickerView: View {
     }
     
     private func saveAndContinue() {
-        // Save selections to invoice
+        // Save selections to invoice (HTML template)
         invoice.selectedTemplate = selectedTemplate
         invoice.selectedTheme = selectedTheme
         
-        // Generate preview
-        if selectedTemplate == .html {
-            do {
-                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme)
-                previewHTML = html
-                previewPDFURL = nil
-                showPreview = true
-            } catch {
-                errorMessage = "Failed to generate preview: \(error.localizedDescription)"
-                showErrorAlert = true
-            }
-        } else {
-            do {
-                let url = try generateInvoicePDF(invoice: invoice, template: selectedTemplate)
-                previewPDFURL = url
-                previewHTML = nil
-                showPreview = true
-            } catch {
-                errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
-                showErrorAlert = true
-            }
+        // Generate HTML preview
+        do {
+            let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme, template: selectedTemplate)
+            previewHTML = html
+            previewPDFURL = nil
+            showPreview = true
+        } catch {
+            errorMessage = "Failed to generate preview: \(error.localizedDescription)"
+            showErrorAlert = true
         }
     }
 }
@@ -2352,10 +2359,10 @@ struct TemplateSelectionView: View {
     }
     
     private func generatePDF(for template: PDFTemplate) {
-        if template == .html {
+        if template == .professional || template == .elegant {
             // Load and preview HTML template
             do {
-                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme)
+                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: invoice.selectedTemplate)
                 print("✅ HTML rendered, showing preview")
                 withAnimation(.easeInOut(duration: 0.25)) {
                     htmlContent = html
@@ -2460,13 +2467,9 @@ struct TemplatePreview: View {
     var body: some View {
         VStack(spacing: 0) {
             switch template {
-            case .classic:
-                ClassicPreview()
-            case .modern:
-                ModernPreview()
-            case .minimal:
-                MinimalPreview()
-            case .html:
+            case .professional:
+                HTMLPreview()
+            case .elegant:
                 HTMLPreview()
             }
         }
@@ -2756,10 +2759,11 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     let fileName = "Invoice_\(invoice.number.replacingOccurrences(of: " ", with: "_")).pdf"
     let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
     
-    // Handle HTML template separately - uses HTML renderer instead of UIGraphicsPDFRenderer
-    if template == .html {
+    // Handle HTML templates separately - uses HTML renderer instead of UIGraphicsPDFRenderer
+    switch template {
+    case .professional, .elegant:
         // Render HTML and generate PDF from it
-                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme)
+        let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
         
         // Use semaphore to wait for async PDF generation
         // Note: This is a synchronous wrapper for the async generatePDFFromHTML function
@@ -2803,25 +2807,12 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     let bodyFontSize: CGFloat
     let spacing: CGFloat
     
+    // This code path should never be reached for HTML templates (professional, elegant)
+    // as they are handled earlier in the function. This switch is exhaustive for the enum.
     switch template {
-    case .classic:
-        headerFontSize = 20
-        titleFontSize = 28
-        bodyFontSize = 12
-        spacing = 20
-    case .modern:
-        headerFontSize = 16
-        titleFontSize = 32
-        bodyFontSize = 11
-        spacing = 16
-    case .minimal:
-        headerFontSize = 14
-        titleFontSize = 20
-        bodyFontSize = 10
-        spacing = 12
-    case .html:
-        // HTML case is handled above, this should never be reached
-        fatalError("HTML template should have been handled earlier in the function")
+    case .professional, .elegant:
+        // HTML templates should have been handled above
+        fatalError("HTML templates should have been handled earlier in the function")
     }
     
     let data = renderer.pdfData { context in

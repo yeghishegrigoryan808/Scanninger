@@ -13,15 +13,18 @@ import SwiftUI
 struct HTMLInvoiceRenderer {
     
     /// Renders an invoice using the HTML template
-    static func renderInvoice(_ invoice: InvoiceModel, theme: InvoiceColorTheme? = nil) throws -> String {
+    static func renderInvoice(_ invoice: InvoiceModel, theme: InvoiceColorTheme? = nil, template: PDFTemplate = .professional) throws -> String {
+        // Get template file name from PDFTemplate
+        let templateFileName = template.templateFileName
+        
         // Load template from bundle - try multiple paths
-        var template: String?
+        var templateContent: String?
         var lastError: Error?
         
         // Try 1: With subdirectory using path
-        if let templatePath = Bundle.main.path(forResource: "invoice_template_modern", ofType: "html", inDirectory: "Templates") {
+        if let templatePath = Bundle.main.path(forResource: templateFileName, ofType: "html", inDirectory: "Templates") {
             do {
-                template = try String(contentsOfFile: templatePath, encoding: .utf8)
+                templateContent = try String(contentsOfFile: templatePath, encoding: .utf8)
                 print("✅ HTML template loaded from path: \(templatePath)")
             } catch {
                 lastError = error
@@ -30,9 +33,9 @@ struct HTMLInvoiceRenderer {
         }
         
         // Try 2: With subdirectory using URL
-        if template == nil, let templateURL = Bundle.main.url(forResource: "invoice_template_modern", withExtension: "html", subdirectory: "Templates") {
+        if templateContent == nil, let templateURL = Bundle.main.url(forResource: templateFileName, withExtension: "html", subdirectory: "Templates") {
             do {
-                template = try String(contentsOf: templateURL, encoding: .utf8)
+                templateContent = try String(contentsOf: templateURL, encoding: .utf8)
                 print("✅ HTML template loaded from URL: \(templateURL.path)")
             } catch {
                 lastError = error
@@ -41,9 +44,9 @@ struct HTMLInvoiceRenderer {
         }
         
         // Try 3: In root directory
-        if template == nil, let templateURL = Bundle.main.url(forResource: "invoice_template_modern", withExtension: "html") {
+        if templateContent == nil, let templateURL = Bundle.main.url(forResource: templateFileName, withExtension: "html") {
             do {
-                template = try String(contentsOf: templateURL, encoding: .utf8)
+                templateContent = try String(contentsOf: templateURL, encoding: .utf8)
                 print("✅ HTML template loaded from root: \(templateURL.path)")
             } catch {
                 lastError = error
@@ -52,15 +55,15 @@ struct HTMLInvoiceRenderer {
         }
         
         // If template not found, return error HTML
-        guard let template = template else {
+        guard let htmlTemplate = templateContent else {
             print("❌ Template not found in bundle. Bundle paths: \(Bundle.main.bundlePath)")
             throw HTMLRenderError.templateNotFound
         }
         
-        print("✅ Template loaded successfully, length: \(template.count) characters")
+        print("✅ Template loaded successfully, length: \(htmlTemplate.count) characters")
         
-        // Build items rows HTML
-        let itemsRows = buildItemsRows(invoice: invoice)
+        // Build items rows HTML (template-specific format)
+        let itemsRows = buildItemsRows(invoice: invoice, template: template)
         
         // Format dates
         let dateFormatter = DateFormatter()
@@ -68,12 +71,18 @@ struct HTMLInvoiceRenderer {
         let invoiceDate = dateFormatter.string(from: invoice.issueDate)
         
         // Format invoice period block (only if both dates exist)
+        // Support both modern and elegant template formats
         let invoicePeriodBlock: String
         if let periodStart = invoice.periodStart, let periodEnd = invoice.periodEnd {
             let shortFormatter = DateFormatter()
             shortFormatter.dateFormat = "MMM d, yyyy"
             let periodText = "\(shortFormatter.string(from: periodStart)) – \(shortFormatter.string(from: periodEnd))"
-            invoicePeriodBlock = "<div><b>Invoice Period</b> \(escapeHTML(periodText))</div>"
+            // Modern template format
+            let modernFormat = "<div><b>Invoice Period</b> \(escapeHTML(periodText))</div>"
+            // Elegant template format
+            let elegantFormat = "<div class=\"meta-row\"><div class=\"meta-label\">Period</div><div class=\"meta-value\">\(escapeHTML(periodText))</div></div>"
+            // Use elegant format if template is elegant, otherwise modern format
+            invoicePeriodBlock = template == .elegant ? elegantFormat : modernFormat
         } else {
             invoicePeriodBlock = ""
         }
@@ -113,7 +122,7 @@ struct HTMLInvoiceRenderer {
         let billToPhoneBlock = currentClientPhone.isEmpty ? "" : "<div>\(escapeHTML(currentClientPhone))</div>"
         
         // Replace placeholders
-        var html = template
+        var html = htmlTemplate
         html = html.replacingOccurrences(of: "{{fromName}}", with: escapeHTML(currentBusinessName))
         html = html.replacingOccurrences(of: "{{fromAddress}}", with: fromAddressBlock)
         html = html.replacingOccurrences(of: "{{fromEmail}}", with: fromEmailBlock)
@@ -137,12 +146,47 @@ struct HTMLInvoiceRenderer {
         
         html = html.replacingOccurrences(of: "{{itemsRows}}", with: itemsRows)
         
+        // Build block-style placeholders for elegant template
+        let fromAddressBlockCombined = currentBusinessAddress.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessAddress))</div>"
+        let billToAddressBlockCombined = currentClientAddress.isEmpty ? "" : "<div>\(escapeHTML(currentClientAddress))</div>"
+        
+        // Tax block (only if tax > 0)
+        let taxBlock: String
+        if taxAmount > 0 {
+            taxBlock = "<div class=\"total-row\"><div class=\"label\">Tax</div><div class=\"value\">\(escapeHTML(formattedTax))</div></div>"
+        } else {
+            taxBlock = ""
+        }
+        
+        // Discount block (only if discount > 0)
+        let discountBlock: String
+        if discount > 0 {
+            discountBlock = "<div class=\"total-row\"><div class=\"label\">Discount</div><div class=\"value\">\(escapeHTML(formattedDiscount))</div></div>"
+        } else {
+            discountBlock = ""
+        }
+        
+        // Payment info block (empty - no payment info field)
+        let paymentInfoBlock = ""
+        
+        // Notes block (empty - no notes field in current model)
+        let notesBlock = ""
+        
+        // Replace block-style placeholders (for elegant template)
+        html = html.replacingOccurrences(of: "{{fromAddressBlock}}", with: fromAddressBlockCombined)
+        html = html.replacingOccurrences(of: "{{billToAddressBlock}}", with: billToAddressBlockCombined)
+        html = html.replacingOccurrences(of: "{{paymentInfoBlock}}", with: paymentInfoBlock)
+        html = html.replacingOccurrences(of: "{{notesBlock}}", with: notesBlock)
+        html = html.replacingOccurrences(of: "{{taxBlock}}", with: taxBlock)
+        html = html.replacingOccurrences(of: "{{discountBlock}}", with: discountBlock)
+        
+        // Replace individual placeholders (for modern template - backward compatibility)
         html = html.replacingOccurrences(of: "{{subtotal}}", with: escapeHTML(formattedSubtotal))
         html = html.replacingOccurrences(of: "{{tax}}", with: escapeHTML(formattedTax))
         html = html.replacingOccurrences(of: "{{discount}}", with: escapeHTML(formattedDiscount))
         html = html.replacingOccurrences(of: "{{total}}", with: escapeHTML(formattedTotal))
         
-        // Notes (empty if not available)
+        // Notes (empty if not available) - backward compatibility
         let notes = "" // No notes field in current model
         html = html.replacingOccurrences(of: "{{notes}}", with: escapeHTML(notes))
         
@@ -156,37 +200,78 @@ struct HTMLInvoiceRenderer {
         return html
     }
     
-    /// Builds the HTML rows for invoice items
-    private static func buildItemsRows(invoice: InvoiceModel) -> String {
+    /// Builds the HTML rows for invoice items (template-specific format)
+    private static func buildItemsRows(invoice: InvoiceModel, template: PDFTemplate) -> String {
         guard let items = invoice.items, !items.isEmpty else {
-            return """
-            <div class="item-row">
-                <div class="item-title">No items</div>
-                <div class="right">—</div>
-                <div class="right">—</div>
-                <div class="right">—</div>
-            </div>
-            """
+            // Return empty row based on template format
+            switch template {
+            case .professional:
+                return """
+                <div class="item-row">
+                    <div class="item-title">No items</div>
+                    <div class="right">—</div>
+                    <div class="right">—</div>
+                    <div class="right">—</div>
+                </div>
+                """
+            case .elegant:
+                return """
+                <tr>
+                    <td>No items</td>
+                    <td class="num">—</td>
+                    <td class="num">—</td>
+                    <td class="num">—</td>
+                </tr>
+                """
+            }
         }
         
         let currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
         
-        return items.map { item in
-            let description = escapeHTML(item.title)
-            let details = item.details.isEmpty ? "" : "<br><small style=\"color:#888;\">\(escapeHTML(item.details))</small>"
-            let rate = formatCurrency(item.price, currencyCode: currencyCode)
-            let qty = "\(item.qty) \(escapeHTML(item.unit))"
-            let amount = formatCurrency(item.total, currencyCode: currencyCode)
+        switch template {
+        case .professional:
+            // Professional template uses div-based grid layout
+            return items.map { item in
+                let description = escapeHTML(item.title)
+                let details = item.details.isEmpty ? "" : "<br><small style=\"color:#888;\">\(escapeHTML(item.details))</small>"
+                let rate = formatCurrency(item.price, currencyCode: currencyCode)
+                let qty = "\(item.qty) \(escapeHTML(item.unit))"
+                let amount = formatCurrency(item.total, currencyCode: currencyCode)
+                
+                return """
+                <div class="item-row">
+                    <div class="item-title">\(description)\(details)</div>
+                    <div class="right">\(rate)</div>
+                    <div class="right">\(qty)</div>
+                    <div class="right">\(amount)</div>
+                </div>
+                """
+            }.joined(separator: "\n")
             
-            return """
-            <div class="item-row">
-                <div class="item-title">\(description)\(details)</div>
-                <div class="right">\(rate)</div>
-                <div class="right">\(qty)</div>
-                <div class="right">\(amount)</div>
-            </div>
-            """
-        }.joined(separator: "\n")
+        case .elegant:
+            // Elegant template uses proper HTML table rows
+            return items.map { item in
+                let title = escapeHTML(item.title)
+                let description = item.details.isEmpty ? "" : escapeHTML(item.details)
+                let rate = formatCurrency(item.price, currencyCode: currencyCode)
+                let qty = "\(item.qty) \(escapeHTML(item.unit))"
+                let amount = formatCurrency(item.total, currencyCode: currencyCode)
+                
+                var titleCell = "<div class=\"item-title\">\(title)</div>"
+                if !description.isEmpty {
+                    titleCell += "<div class=\"item-desc\">\(description)</div>"
+                }
+                
+                return """
+                <tr>
+                    <td>\(titleCell)</td>
+                    <td class="num">\(rate)</td>
+                    <td class="num">\(qty)</td>
+                    <td class="num">\(amount)</td>
+                </tr>
+                """
+            }.joined(separator: "\n")
+        }
     }
     
     /// Escapes HTML special characters

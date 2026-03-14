@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invoice {{invoiceNumber}}</title>
+
+<style>
+  :root {
+    --accent: {{accentColor}};
+    --accent-dark: {{titleColor}};
+    --accent-soft: {{accentSoftColor}};
+    --border: {{borderColor}};
+    --text: #1f2937;
+    --muted: #6b7280;
+    --bg: #f3f4f6;
+    --line: #e5e7eb;
+    --white: #ffffff;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+  }
+
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  body {
+    padding: 18px;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    background: var(--white);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .top-accent {
+    width: 100%;
+    height: 14px;
+    background: linear-gradient(90deg, var(--accent-dark), var(--accent));
+    position: relative;
+    z-index: 3;
+  }
+
+  .page::before {
+    content: "";
+    position: absolute;
+    top: -55mm;
+    right: -35mm;
+    width: 120mm;
+    height: 90mm;
+    background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+    opacity: 0.18;
+    transform: rotate(8deg);
+    clip-path: polygon(18% 0%, 100% 0%, 100% 82%, 0% 28%);
+    pointer-events: none;
+  }
+
+  .page::after {
+    content: "";
+    position: absolute;
+    bottom: -45mm;
+    left: -30mm;
+    width: 110mm;
+    height: 80mm;
+    background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+    opacity: 0.16;
+    transform: rotate(-8deg);
+    clip-path: polygon(0 18%, 86% 0, 100% 100%, 14% 84%);
+    pointer-events: none;
+  }
+
+  .corner-line-top {
+    position: absolute;
+    top: 14px;
+    right: -8mm;
+    width: 120mm;
+    height: 28mm;
+    border-top: 10px solid rgba(203, 213, 225, 0.75);
+    border-left: 10px solid transparent;
+    transform: rotate(4deg);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .corner-line-bottom {
+    position: absolute;
+    bottom: 6mm;
+    left: -10mm;
+    width: 120mm;
+    height: 28mm;
+    border-bottom: 10px solid rgba(203, 213, 225, 0.72);
+    border-right: 10px solid transparent;
+    transform: rotate(4deg);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .inner {
+    position: relative;
+    z-index: 2;
+    padding: 18mm 18mm 18mm 18mm;
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 16mm;
+    align-items: start;
+    margin-bottom: 14mm;
+  }
+
+  .left-head {
+    min-width: 0;
+  }
+
+  .business-name {
+    font-size: 17px;
+    font-weight: 800;
+    margin-bottom: 16px;
+    color: #111827;
+  }
+
+  .invoice-title {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 42px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 0 0 16px 0;
+    color: #111827;
+    text-transform: uppercase;
+  }
+
+  .from-lines {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #4b5563;
+    white-space: pre-line;
+  }
+
+  .right-head {
+    text-align: right;
+    padding-top: 4px;
+  }
+
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  .meta-label {
+    color: var(--accent-dark);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .meta-value {
+    color: #111827;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .bill-to-section {
+    margin-bottom: 14mm;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: #111827;
+    margin-bottom: 10px;
+  }
+
+  .client-card {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 18px 20px;
+    background: linear-gradient(135deg, #ffffff, rgba(249, 250, 251, 0.98));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+  }
+
+  .client-name {
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    color: #111827;
+  }
+
+  .client-lines {
+    font-size: 13px;
+    line-height: 1.65;
+    color: #4b5563;
+    white-space: pre-line;
+  }
+
+  .items-wrap {
+    margin-bottom: 14mm;
+  }
+
+  .table-shell {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    overflow: hidden;
+    background: white;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    background: linear-gradient(90deg, var(--accent-dark), var(--accent));
+    color: white;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 14px 14px;
+    text-align: left;
+    border-right: 1px solid rgba(255,255,255,0.18);
+  }
+
+  thead th:last-child {
+    border-right: none;
+  }
+
+  thead th.num,
+  tbody td.num {
+    text-align: right;
+  }
+
+  tbody td {
+    padding: 14px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    font-size: 13px;
+    background: white;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody td + td {
+    border-left: 1px solid #f0f2f5;
+  }
+
+  .item-title {
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 4px;
+    color: #111827;
+  }
+
+  .item-desc {
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.55;
+    white-space: pre-line;
+  }
+
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 78mm;
+    gap: 14mm;
+    align-items: start;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .info-card {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #ffffff, rgba(249,250,251,0.98));
+  }
+
+  .info-card .heading {
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent-dark);
+    margin-bottom: 8px;
+  }
+
+  .info-card .content {
+    font-size: 13px;
+    line-height: 1.65;
+    color: #4b5563;
+    white-space: pre-line;
+  }
+
+  .totals-card {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px 18px;
+    background: linear-gradient(180deg, #ffffff, #fbfcfe);
+    box-shadow: 0 8px 24px rgba(17, 24, 39, 0.04);
+  }
+
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 0;
+    font-size: 13px;
+  }
+
+  .total-row .label {
+    color: #4b5563;
+  }
+
+  .total-row .value {
+    color: #111827;
+    font-weight: 800;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--line);
+    margin: 10px 0 12px 0;
+  }
+
+  .grand-total {
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.35)), var(--accent-soft);
+  }
+
+  .grand-total-top {
+    padding: 12px 14px 8px 14px;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent-dark);
+  }
+
+  .grand-total-amount {
+    padding: 0 14px 14px 14px;
+    font-size: 32px;
+    line-height: 1.1;
+    font-weight: 900;
+    color: var(--accent-dark);
+    word-break: break-word;
+  }
+
+  @media print {
+    body {
+      padding: 0;
+      background: #ffffff;
+    }
+
+    .page {
+      margin: 0;
+      box-shadow: none;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="top-accent"></div>
+    <div class="corner-line-top"></div>
+    <div class="corner-line-bottom"></div>
+
+    <div class="inner">
+
+      <div class="hero">
+        <div class="left-head">
+          <div class="business-name">{{fromName}}</div>
+          <div class="invoice-title">Invoice</div>
+          <div class="from-lines">{{fromAddressBlock}}</div>
+        </div>
+
+        <div class="right-head">
+          <div class="meta-row">
+            <div class="meta-label">Invoice #</div>
+            <div class="meta-value">{{invoiceNumber}}</div>
+          </div>
+
+          <div class="meta-row">
+            <div class="meta-label">Issued</div>
+            <div class="meta-value">{{invoiceDate}}</div>
+          </div>
+
+          {{invoicePeriodBlock}}
+        </div>
+      </div>
+
+      <div class="bill-to-section">
+        <div class="section-label">Billed To</div>
+        <div class="client-card">
+          <div class="client-name">{{billToName}}</div>
+          <div class="client-lines">{{billToAddressBlock}}</div>
+        </div>
+      </div>
+
+      <div class="items-wrap">
+        <div class="table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th class="num" style="width: 120px;">Rate</th>
+                <th class="num" style="width: 90px;">Qty</th>
+                <th class="num" style="width: 140px;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{itemsRows}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bottom-grid">
+        <div class="stack">
+          {{paymentInfoBlock}}
+          {{notesBlock}}
+        </div>
+
+        <div class="totals-card">
+          <div class="total-row">
+            <div class="label">Subtotal</div>
+            <div class="value">{{subtotal}}</div>
+          </div>
+
+          {{taxBlock}}
+
+          {{discountBlock}}
+
+          <div class="divider"></div>
+
+          <div class="grand-total">
+            <div class="grand-total-top">Total</div>
+            <div class="grand-total-amount">{{total}}</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
