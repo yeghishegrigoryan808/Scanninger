@@ -105,17 +105,16 @@ struct HTMLInvoiceRenderer {
         let formattedDiscount = formatCurrency(discount, currencyCode: currencyCode)
         let formattedTotal = formatCurrency(total, currencyCode: currencyCode)
         
-        // Get current business profile data (prefer current profile over snapshot)
-        let currentBusinessName = invoice.businessProfile?.name ?? invoice.businessName
-        let currentBusinessAddress = invoice.businessProfile?.address ?? invoice.businessAddress
-        let currentBusinessEmail = invoice.businessProfile?.email ?? invoice.businessEmail
-        let currentBusinessPhone = invoice.businessProfile?.phone ?? invoice.businessPhone
+        // Always render from invoice snapshots to preserve historical integrity.
+        let currentBusinessName = invoice.businessName
+        let currentBusinessAddress = invoice.businessAddress
+        let currentBusinessEmail = invoice.businessEmail
+        let currentBusinessPhone = invoice.businessPhone
         
-        // Get current client profile data (prefer current profile over snapshot)
-        let currentClientName = invoice.clientRef?.name ?? invoice.clientName
-        let currentClientAddress = invoice.clientRef?.address ?? invoice.clientAddress
-        let currentClientEmail = invoice.clientRef?.email ?? invoice.clientEmail
-        let currentClientPhone = invoice.clientRef?.phone ?? invoice.clientPhone
+        let currentClientName = invoice.clientName
+        let currentClientAddress = invoice.clientAddress
+        let currentClientEmail = invoice.clientEmail
+        let currentClientPhone = invoice.clientPhone
         
         // Build conditional blocks for optional fields
         let fromAddressBlock = currentBusinessAddress.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessAddress))</div>"

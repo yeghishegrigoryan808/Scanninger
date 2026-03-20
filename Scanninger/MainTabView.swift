@@ -55,21 +55,27 @@ enum InvoiceStatus: String, CaseIterable {
 // MARK: - Business Profile Model
 @Model
 final class BusinessProfileModel {
+    var id: UUID
     var name: String
     var address: String
     var phone: String
     var email: String
     var taxId: String
+    var isArchived: Bool
+    var archivedAt: Date?
     var createdAt: Date
     var updatedAt: Date
     var logoData: Data?
     
-    init(name: String, address: String, phone: String, email: String, taxId: String = "", createdAt: Date = Date(), updatedAt: Date = Date(), logoData: Data? = nil) {
+    init(id: UUID = UUID(), name: String, address: String, phone: String, email: String, taxId: String = "", isArchived: Bool = false, archivedAt: Date? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), logoData: Data? = nil) {
+        self.id = id
         self.name = name
         self.address = address
         self.phone = phone
         self.email = email
         self.taxId = taxId
+        self.isArchived = isArchived
+        self.archivedAt = archivedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.logoData = logoData
@@ -79,22 +85,28 @@ final class BusinessProfileModel {
 // MARK: - Client Model
 @Model
 final class ClientModel {
+    var id: UUID
     var name: String
     var address: String
     var phone: String
     var email: String
     var taxId: String
     var logoData: Data?
+    var isArchived: Bool
+    var archivedAt: Date?
     var createdAt: Date
     var updatedAt: Date
     
-    init(name: String, address: String = "", phone: String = "", email: String = "", taxId: String = "", logoData: Data? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
+    init(id: UUID = UUID(), name: String, address: String = "", phone: String = "", email: String = "", taxId: String = "", logoData: Data? = nil, isArchived: Bool = false, archivedAt: Date? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
+        self.id = id
         self.name = name
         self.address = address
         self.phone = phone
         self.email = email
         self.taxId = taxId
         self.logoData = logoData
+        self.isArchived = isArchived
+        self.archivedAt = archivedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -103,6 +115,7 @@ final class ClientModel {
 // MARK: - Invoice Model
 @Model
 final class InvoiceModel {
+    var id: UUID
     var number: String
     var clientName: String
     var statusRaw: String
@@ -111,9 +124,12 @@ final class InvoiceModel {
     var taxPercent: Double
     var currencyCode: String
     var createdAt: Date
+    var updatedAt: Date
     var paidAt: Date?
     var periodStart: Date?
     var periodEnd: Date?
+    var businessProfileId: UUID?
+    var clientProfileId: UUID?
     
     // Design preferences (optional for migration compatibility)
     var templateRaw: String?
@@ -139,7 +155,8 @@ final class InvoiceModel {
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessTaxId: String = "", businessLogoData: Data? = nil, periodStart: Date? = nil, periodEnd: Date? = nil, templateRaw: String? = nil, themeRaw: String? = nil) {
+    init(id: UUID = UUID(), number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, updatedAt: Date = Date(), businessProfileId: UUID? = nil, clientProfileId: UUID? = nil, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessTaxId: String = "", businessLogoData: Data? = nil, periodStart: Date? = nil, periodEnd: Date? = nil, templateRaw: String? = nil, themeRaw: String? = nil) {
+        self.id = id
         self.number = number
         self.clientName = clientName
         self.statusRaw = statusRaw
@@ -148,6 +165,9 @@ final class InvoiceModel {
         self.taxPercent = taxPercent
         self.currencyCode = currencyCode
         self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.businessProfileId = businessProfileId
+        self.clientProfileId = clientProfileId
         self.businessProfile = business
         self.items = items
         self.paidAt = paidAt
@@ -279,6 +299,55 @@ func formatPeriodRange(start: Date, end: Date) -> String {
     return "\(formatter.string(from: start)) – \(formatter.string(from: end))"
 }
 
+func normalizedBusinessName(_ name: String) -> String {
+    name
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ")
+        .lowercased()
+}
+
+/// Normalizes invoice snapshot business names for report grouping (same rules as `normalizedBusinessName`).
+func normalizedReportBusinessName(_ name: String) -> String {
+    normalizedBusinessName(name)
+}
+
+/// Deterministic title-style label for Reports UI from the grouping key (not raw invoice snapshots).
+func displayBusinessName(from normalizedKey: String) -> String {
+    if normalizedKey.isEmpty {
+        return "Unknown business"
+    }
+    return normalizedKey.capitalized
+}
+
+// MARK: - Report scope (invoice snapshot / history)
+
+/// One row in the Reports business picker, derived only from stored invoices.
+struct ReportBusinessGroup: Identifiable, Hashable {
+    /// Case-insensitive, whitespace-normalized key from `invoice.businessName`.
+    let normalizedKey: String
+    /// Stable display label derived from `normalizedKey` via `displayBusinessName(from:)`.
+    let displayName: String
+    
+    var id: String { normalizedKey.isEmpty ? "__report_empty_business__" : normalizedKey }
+}
+
+enum ReportScope: Hashable {
+    case overall
+    case business(normalizedKey: String, displayName: String)
+}
+
+/// Builds business report groups from invoice snapshot names only (ignores active/archived profiles).
+func makeReportBusinessGroups(from invoices: [InvoiceModel]) -> [ReportBusinessGroup] {
+    guard !invoices.isEmpty else { return [] }
+    let grouped = Dictionary(grouping: invoices) { normalizedReportBusinessName($0.businessName) }
+    return grouped.map { normalizedKey, _ in
+        let displayName = displayBusinessName(from: normalizedKey)
+        return ReportBusinessGroup(normalizedKey: normalizedKey, displayName: displayName)
+    }
+    .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+}
+
 // MARK: - Invoice Duplication Helper
 func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allInvoices: [InvoiceModel]) -> InvoiceModel {
     // Generate next invoice number
@@ -313,6 +382,9 @@ func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allIn
             dueDate: invoice.dueDate,
             taxPercent: invoice.taxPercent,
             createdAt: Date(),
+            updatedAt: Date(),
+            businessProfileId: invoice.businessProfileId,
+            clientProfileId: invoice.clientProfileId,
             business: invoice.businessProfile,
             items: newLineItems,
             paidAt: nil,
@@ -806,6 +878,14 @@ struct CreateInvoiceView: View {
     @State private var itemIndexToDelete: Int?
     @State private var showDeleteItemAlert = false
     
+    private var activeBusinessProfiles: [BusinessProfileModel] {
+        businessProfiles.filter { !$0.isArchived }
+    }
+    
+    private var activeClients: [ClientModel] {
+        clients.filter { !$0.isArchived }
+    }
+    
     init(template: InvoiceModel? = nil) {
         self.template = template
     }
@@ -835,7 +915,7 @@ struct CreateInvoiceView: View {
         NavigationStack {
             Form {
                 Section("Business") {
-                    if businessProfiles.isEmpty {
+                    if activeBusinessProfiles.isEmpty {
                         VStack(spacing: 12) {
                             Text("No business profiles found. Please create one to continue.")
                                 .font(.subheadline)
@@ -847,7 +927,7 @@ struct CreateInvoiceView: View {
                     } else {
                         Picker("Business Profile", selection: $selectedBusiness) {
                             Text("Select Business").tag(nil as BusinessProfileModel?)
-                            ForEach(businessProfiles) { profile in
+                            ForEach(activeBusinessProfiles) { profile in
                                 Text(profile.name).tag(profile as BusinessProfileModel?)
                             }
                         }
@@ -860,7 +940,7 @@ struct CreateInvoiceView: View {
                 }
                 
                 Section("Client") {
-                    if clients.isEmpty {
+                    if activeClients.isEmpty {
                         VStack(spacing: 12) {
                             Text("No clients found. Please create one to continue.")
                                 .font(.subheadline)
@@ -872,7 +952,7 @@ struct CreateInvoiceView: View {
                     } else {
                         Picker("Client", selection: $selectedClient) {
                             Text("Select Client").tag(nil as ClientModel?)
-                            ForEach(clients) { client in
+                            ForEach(activeClients) { client in
                                 Text(client.name).tag(client as ClientModel?)
                             }
                         }
@@ -1005,8 +1085,8 @@ struct CreateInvoiceView: View {
             .onAppear {
                 // Prefill from template if provided
                 if let template = template {
-                    selectedBusiness = template.businessProfile
-                    selectedClient = template.clientRef
+                    selectedBusiness = activeBusinessProfiles.first(where: { $0.id == template.businessProfileId })
+                    selectedClient = activeClients.first(where: { $0.id == template.clientProfileId })
                     invoiceNumber = "" // Will be auto-generated on Save
                     currencyCode = template.currencyCode.isEmpty ? "USD" : template.currencyCode
                     issueDate = template.issueDate
@@ -1159,6 +1239,9 @@ struct CreateInvoiceView: View {
             dueDate: dueDate,
             taxPercent: taxPercent,
             createdAt: Date(),
+            updatedAt: Date(),
+            businessProfileId: finalBusinessProfile?.id,
+            clientProfileId: finalClient?.id,
             business: finalBusinessProfile,
             items: lineItemModels,
             paidAt: nil,
@@ -1171,11 +1254,13 @@ struct CreateInvoiceView: View {
         
         // Assign snapshot fields
         invoice.clientRef = finalClient
+        invoice.clientProfileId = finalClient?.id
         invoice.clientAddress = clientSnapshotAddress
         invoice.clientPhone = clientSnapshotPhone
         invoice.clientEmail = clientSnapshotEmail
         invoice.clientTaxId = clientSnapshotTaxId
         invoice.businessProfile = finalBusinessProfile
+        invoice.businessProfileId = finalBusinessProfile?.id
         invoice.businessName = snapshotName
         invoice.businessAddress = snapshotAddress
         invoice.businessPhone = snapshotPhone
@@ -1224,6 +1309,14 @@ struct EditInvoiceView: View {
     @State private var itemIndexToDelete: Int?
     @State private var showDeleteItemAlert = false
     
+    private var activeBusinessProfiles: [BusinessProfileModel] {
+        businessProfiles.filter { !$0.isArchived }
+    }
+    
+    private var activeClients: [ClientModel] {
+        clients.filter { !$0.isArchived }
+    }
+    
     private let currencies: [(code: String, symbol: String)] = [
         ("USD", "$"),
         ("EUR", "€"),
@@ -1248,7 +1341,7 @@ struct EditInvoiceView: View {
         NavigationStack {
             Form {
                 Section("Business") {
-                    if businessProfiles.isEmpty {
+                    if activeBusinessProfiles.isEmpty {
                         VStack(spacing: 12) {
                             Text("No business profiles found. Please create one to continue.")
                                 .font(.subheadline)
@@ -1260,7 +1353,7 @@ struct EditInvoiceView: View {
                     } else {
                         Picker("Business Profile", selection: $selectedBusiness) {
                             Text("Select Business").tag(nil as BusinessProfileModel?)
-                            ForEach(businessProfiles) { profile in
+                            ForEach(activeBusinessProfiles) { profile in
                                 Text(profile.name).tag(profile as BusinessProfileModel?)
                             }
                         }
@@ -1273,7 +1366,7 @@ struct EditInvoiceView: View {
                 }
                 
                 Section("Client") {
-                    if clients.isEmpty {
+                    if activeClients.isEmpty {
                         VStack(spacing: 12) {
                             Text("No clients found. Please create one to continue.")
                                 .font(.subheadline)
@@ -1285,7 +1378,7 @@ struct EditInvoiceView: View {
                     } else {
                         Picker("Client", selection: $selectedClient) {
                             Text("Select Client").tag(nil as ClientModel?)
-                            ForEach(clients) { client in
+                            ForEach(activeClients) { client in
                                 Text(client.name).tag(client as ClientModel?)
                             }
                         }
@@ -1454,10 +1547,10 @@ struct EditInvoiceView: View {
     }
     
     private func loadInvoiceData() {
-        selectedBusiness = invoice.businessProfile
+        selectedBusiness = activeBusinessProfiles.first(where: { $0.id == invoice.businessProfileId })
         
         // Load client data
-        selectedClient = invoice.clientRef
+        selectedClient = activeClients.first(where: { $0.id == invoice.clientProfileId })
         
         invoiceNumber = invoice.number
         currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
@@ -1493,6 +1586,7 @@ struct EditInvoiceView: View {
         // Update business properties
         if let selected = selectedBusiness {
             invoice.businessProfile = selected
+            invoice.businessProfileId = selected.id
             // Update snapshot fields
             invoice.businessName = selected.name
             invoice.businessAddress = selected.address
@@ -1500,17 +1594,24 @@ struct EditInvoiceView: View {
             invoice.businessEmail = selected.email
             invoice.businessTaxId = selected.taxId
             invoice.businessLogoData = selected.logoData
+        } else {
+            invoice.businessProfile = nil
+            invoice.businessProfileId = nil
         }
         
         // Handle client selection
         if let selected = selectedClient {
             // Use selected client - copy to snapshot
             invoice.clientRef = selected
+            invoice.clientProfileId = selected.id
             invoice.clientName = selected.name
             invoice.clientAddress = selected.address
             invoice.clientPhone = selected.phone
             invoice.clientEmail = selected.email
             invoice.clientTaxId = selected.taxId
+        } else {
+            invoice.clientRef = nil
+            invoice.clientProfileId = nil
         }
         
         invoice.number = invoiceNumber
@@ -1521,6 +1622,7 @@ struct EditInvoiceView: View {
         invoice.periodEnd = periodEnd
         invoice.taxPercent = taxPercent
         invoice.items = newLineItems
+        invoice.updatedAt = Date()
         
         do {
             try modelContext.save()
@@ -1878,6 +1980,7 @@ struct InvoiceDetailView: View {
             // Mark as paid
             invoice.paidAt = Date()
         }
+        invoice.updatedAt = Date()
         
         do {
             try modelContext.save()
@@ -3344,6 +3447,7 @@ struct LogoPreviewView: View {
 struct CreateBusinessProfileView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
     
     var onSave: ((BusinessProfileModel) -> Void)?
     
@@ -3355,6 +3459,8 @@ struct CreateBusinessProfileView: View {
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showLogoPreview = false
+    @State private var showValidationAlert = false
+    @State private var validationMessage = ""
     
     init(onSave: ((BusinessProfileModel) -> Void)? = nil) {
         self.onSave = onSave
@@ -3412,6 +3518,12 @@ struct CreateBusinessProfileView: View {
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                     TextField("Tax ID (optional)", text: $taxId)
+                    
+                    if isDuplicateName {
+                        Text("An active business profile with this name already exists.")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
             }
             .navigationTitle("New Business Profile")
@@ -3432,14 +3544,31 @@ struct CreateBusinessProfileView: View {
                     .disabled(!isValid)
                 }
             }
+            .alert("Validation", isPresented: $showValidationAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(validationMessage)
+            }
         }
     }
     
+    private var isDuplicateName: Bool {
+        let normalized = normalizedBusinessName(name)
+        guard !normalized.isEmpty else { return false }
+        return businessProfiles.contains { !$0.isArchived && normalizedBusinessName($0.name) == normalized }
+    }
+    
     private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isDuplicateName
     }
     
     private func saveBusinessProfile() {
+        if isDuplicateName {
+            validationMessage = "Please choose a different business name. Active business names must be unique."
+            showValidationAlert = true
+            return
+        }
+        
         let business = BusinessProfileModel(
             name: name,
             address: address,
@@ -3467,6 +3596,7 @@ struct CreateBusinessProfileView: View {
 struct EditBusinessProfileView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
     
     let business: BusinessProfileModel
     
@@ -3478,6 +3608,8 @@ struct EditBusinessProfileView: View {
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showLogoPreview = false
+    @State private var showValidationAlert = false
+    @State private var validationMessage = ""
     
     init(business: BusinessProfileModel) {
         self.business = business
@@ -3541,6 +3673,12 @@ struct EditBusinessProfileView: View {
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                     TextField("Tax ID (optional)", text: $taxId)
+                    
+                    if isDuplicateName {
+                        Text("An active business profile with this name already exists.")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
             }
             .navigationTitle("Edit Business Profile")
@@ -3555,14 +3693,35 @@ struct EditBusinessProfileView: View {
                     .disabled(!isValid)
                 }
             }
+            .alert("Validation", isPresented: $showValidationAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(validationMessage)
+            }
+        }
+    }
+    
+    private var isDuplicateName: Bool {
+        let normalized = normalizedBusinessName(name)
+        guard !normalized.isEmpty else { return false }
+        return businessProfiles.contains {
+            !$0.isArchived &&
+            $0.id != business.id &&
+            normalizedBusinessName($0.name) == normalized
         }
     }
     
     private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isDuplicateName
     }
     
     private func saveBusinessProfile() {
+        if isDuplicateName {
+            validationMessage = "Please choose a different business name. Active business names must be unique."
+            showValidationAlert = true
+            return
+        }
+        
         business.name = name
         business.address = address
         business.phone = phone
@@ -3827,11 +3986,15 @@ struct ClientsView: View {
     @State private var selectedClientIDs = Set<PersistentIdentifier>()
     @State private var showBulkDeleteConfirmation = false
     
+    private var activeClients: [ClientModel] {
+        clients.filter { !$0.isArchived }
+    }
+    
     private var filteredClients: [ClientModel] {
         if searchText.isEmpty {
-            return clients
+            return activeClients
         }
-        return clients.filter { client in
+        return activeClients.filter { client in
             client.name.localizedCaseInsensitiveContains(searchText) ||
             client.email.localizedCaseInsensitiveContains(searchText) ||
             client.phone.localizedCaseInsensitiveContains(searchText)
@@ -3895,7 +4058,7 @@ struct ClientsView: View {
                                             clientToDelete = client
                                             showDeleteConfirmation = true
                                         } label: {
-                                            Label("Delete", systemImage: "trash")
+                                            Label("Archive", systemImage: "archivebox")
                                         }
                                     }
                                 }
@@ -3909,8 +4072,8 @@ struct ClientsView: View {
                                 showBulkDeleteConfirmation = true
                             } label: {
                                 HStack {
-                                    Image(systemName: "trash")
-                                    Text("Delete Selected (\(selectedClientIDs.count))")
+                                    Image(systemName: "archivebox")
+                                    Text("Archive Selected (\(selectedClientIDs.count))")
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding()
@@ -3959,45 +4122,37 @@ struct ClientsView: View {
             .sheet(isPresented: $showCreateClient) {
                 CreateClientView()
             }
-            .alert("Delete?", isPresented: $showDeleteConfirmation) {
+            .alert("Archive?", isPresented: $showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {
                     clientToDelete = nil
                 }
-                Button("Delete", role: .destructive) {
+                Button("Archive", role: .destructive) {
                     if let client = clientToDelete {
                         deleteClient(client)
                     }
                     clientToDelete = nil
                 }
             } message: {
-                Text("This cannot be undone.")
+                Text("This client will be archived and hidden from active lists.")
             }
-            .alert("Delete selected?", isPresented: $showBulkDeleteConfirmation) {
+            .alert("Archive selected?", isPresented: $showBulkDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {
                     // Do nothing
                 }
-                Button("Delete", role: .destructive) {
+                Button("Archive", role: .destructive) {
                     deleteSelectedClients()
                 }
             } message: {
-                Text("This cannot be undone.")
+                Text("Selected clients will be archived and hidden from active lists.")
             }
         }
     }
     
     private func deleteClient(_ client: ClientModel) {
         withAnimation {
-            // Find all invoices referencing this client and set clientRef to nil
-            let descriptor = FetchDescriptor<InvoiceModel>()
-            if let allInvoices = try? modelContext.fetch(descriptor) {
-                for invoice in allInvoices {
-                    if invoice.clientRef == client {
-                        invoice.clientRef = nil
-                    }
-                }
-            }
-            
-            modelContext.delete(client)
+            client.isArchived = true
+            client.archivedAt = Date()
+            client.updatedAt = Date()
         }
         
         do {
@@ -4011,18 +4166,10 @@ struct ClientsView: View {
         let clientsToDelete = filteredClients.filter { selectedClientIDs.contains($0.persistentModelID) }
         
         withAnimation {
-            // Find all invoices referencing these clients and set clientRef to nil
-            let descriptor = FetchDescriptor<InvoiceModel>()
-            if let allInvoices = try? modelContext.fetch(descriptor) {
-                for invoice in allInvoices {
-                    if let clientRef = invoice.clientRef, clientsToDelete.contains(clientRef) {
-                        invoice.clientRef = nil
-                    }
-                }
-            }
-            
             for client in clientsToDelete {
-                modelContext.delete(client)
+                client.isArchived = true
+                client.archivedAt = Date()
+                client.updatedAt = Date()
             }
         }
         
@@ -4104,18 +4251,30 @@ struct CardHeightPreferenceKey: PreferenceKey {
 
 struct ReportsView: View {
     @Query(sort: \InvoiceModel.issueDate, order: .reverse) private var allInvoices: [InvoiceModel]
-    @Query(sort: \BusinessProfileModel.name) private var businessProfiles: [BusinessProfileModel]
     
     @State private var selectedPeriod: ReportPeriod = .thisMonth
     @State private var showCustomRangePicker = false
     @State private var customStartDate = Date()
     @State private var customEndDate = Date()
-    @State private var selectedBusiness: BusinessProfileModel? = nil // nil = Overall
+    @State private var reportScope: ReportScope = .overall
     @State private var selectedClient: String?
     @State private var showClientInvoices = false
     @State private var showPaidInvoices = false
     @State private var showUnpaidInvoices = false
     @State private var cardHeight: CGFloat = 0
+    
+    /// Business rows in the report picker: derived only from invoices in storage (snapshot names).
+    private var reportBusinessGroups: [ReportBusinessGroup] {
+        makeReportBusinessGroups(from: allInvoices)
+    }
+    
+    /// Changes when invoice set affects which normalized business keys exist (display is derived from keys).
+    private var reportBusinessGroupingSignature: String {
+        reportBusinessGroups
+            .map(\.normalizedKey)
+            .sorted()
+            .joined(separator: "§")
+    }
     
     enum ReportPeriod {
         case thisMonth
@@ -4154,15 +4313,35 @@ struct ReportsView: View {
             invoice.issueDate >= period.start && invoice.issueDate <= period.end
         }
         
-        // Apply business filter if selected
-        if let selectedBusiness = selectedBusiness {
+        if case .business(let normalizedKey, _) = reportScope {
             filtered = filtered.filter { invoice in
-                // Check both businessProfile relationship and businessName snapshot
-                invoice.businessProfile == selectedBusiness || invoice.businessName == selectedBusiness.name
+                normalizedReportBusinessName(invoice.businessName) == normalizedKey
             }
         }
         
         return filtered
+    }
+    
+    private func pruneReportScopeIfNeeded() {
+        guard case .business(let key, _) = reportScope else { return }
+        let validKeys = Set(reportBusinessGroups.map(\.normalizedKey))
+        if !validKeys.contains(key) {
+            reportScope = .overall
+        }
+    }
+    
+    /// Keeps stored `displayName` aligned with `displayBusinessName(from:)` (e.g. after app updates).
+    private func syncReportScopeDisplayNameIfNeeded() {
+        guard case .business(let key, let currentDisplay) = reportScope else { return }
+        let expected = displayBusinessName(from: key)
+        if currentDisplay != expected {
+            reportScope = .business(normalizedKey: key, displayName: expected)
+        }
+    }
+    
+    private func isReportScopeMatchingBusiness(normalizedKey: String) -> Bool {
+        if case .business(let k, _) = reportScope { return k == normalizedKey }
+        return false
     }
     
     private func invoiceTotal(_ invoice: InvoiceModel) -> Double {
@@ -4318,8 +4497,18 @@ struct ReportsView: View {
         }
     }
     
-    private var selectedBusinessScopeLabel: String {
-        selectedBusiness?.name ?? "Overall"
+    private var reportScopeMenuLabel: String {
+        switch reportScope {
+        case .overall:
+            return "Overall"
+        case .business(let normalizedKey, _):
+            return displayBusinessName(from: normalizedKey)
+        }
+    }
+    
+    private var isOverallScopeSelected: Bool {
+        if case .overall = reportScope { return true }
+        return false
     }
     
     var body: some View {
@@ -4348,23 +4537,23 @@ struct ReportsView: View {
                             
                             Menu {
                                 Button {
-                                    selectedBusiness = nil
+                                    reportScope = .overall
                                 } label: {
-                                    Label("Overall", systemImage: selectedBusiness == nil ? "checkmark" : "")
+                                    Label("Overall", systemImage: isOverallScopeSelected ? "checkmark" : "")
                                 }
                                 
-                                ForEach(businessProfiles) { profile in
+                                ForEach(reportBusinessGroups) { group in
                                     Button {
-                                        selectedBusiness = profile
+                                        reportScope = .business(normalizedKey: group.normalizedKey, displayName: group.displayName)
                                     } label: {
-                                        Label(profile.name, systemImage: selectedBusiness == profile ? "checkmark" : "")
+                                        Label(group.displayName, systemImage: isReportScopeMatchingBusiness(normalizedKey: group.normalizedKey) ? "checkmark" : "")
                                     }
                                 }
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: "line.3.horizontal.decrease.circle")
                                         .font(.subheadline)
-                                    Text(selectedBusinessScopeLabel)
+                                    Text(reportScopeMenuLabel)
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
                                         .lineLimit(1)
@@ -4808,6 +4997,10 @@ struct ReportsView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: reportBusinessGroupingSignature) { _, _ in
+                pruneReportScopeIfNeeded()
+                syncReportScopeDisplayNameIfNeeded()
+            }
             .sheet(isPresented: $showCustomRangePicker) {
                 CustomRangePickerView(startDate: $customStartDate, endDate: $customEndDate)
             }
@@ -4938,7 +5131,7 @@ struct ProfileView: View {
                         Label("Language", systemImage: "globe")
                     }
                     
-                    Picker("Appearance", selection: $appearanceMode) {
+                    Picker("Appearance", systemImage: "paintbrush", selection: $appearanceMode) {
                         Text("System").tag("system")
                         Text("Light").tag("light")
                         Text("Dark").tag("dark")
@@ -5006,11 +5199,15 @@ struct BusinessProfilesView: View {
     @State private var selectedBusinessIDs = Set<PersistentIdentifier>()
     @State private var showBulkDeleteConfirmation = false
     
+    private var activeBusinessProfiles: [BusinessProfileModel] {
+        businessProfiles.filter { !$0.isArchived }
+    }
+    
     private var filteredBusinessProfiles: [BusinessProfileModel] {
         if searchText.isEmpty {
-            return businessProfiles
+            return activeBusinessProfiles
         }
-        return businessProfiles.filter { profile in
+        return activeBusinessProfiles.filter { profile in
             profile.name.localizedCaseInsensitiveContains(searchText) ||
             profile.email.localizedCaseInsensitiveContains(searchText) ||
             profile.phone.localizedCaseInsensitiveContains(searchText) ||
@@ -5075,7 +5272,7 @@ struct BusinessProfilesView: View {
                                             businessToDelete = profile
                                             showDeleteConfirmation = true
                                         } label: {
-                                            Label("Delete", systemImage: "trash")
+                                            Label("Archive", systemImage: "archivebox")
                                         }
                                     }
                                 }
@@ -5089,8 +5286,8 @@ struct BusinessProfilesView: View {
                                 showBulkDeleteConfirmation = true
                             } label: {
                                 HStack {
-                                    Image(systemName: "trash")
-                                    Text("Delete Selected (\(selectedBusinessIDs.count))")
+                                    Image(systemName: "archivebox")
+                                    Text("Archive Selected (\(selectedBusinessIDs.count))")
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding()
@@ -5139,45 +5336,37 @@ struct BusinessProfilesView: View {
             .sheet(isPresented: $showCreateBusinessProfile) {
                 CreateBusinessProfileView()
             }
-            .alert("Delete?", isPresented: $showDeleteConfirmation) {
+            .alert("Archive?", isPresented: $showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {
                     businessToDelete = nil
                 }
-                Button("Delete", role: .destructive) {
+                Button("Archive", role: .destructive) {
                     if let business = businessToDelete {
                         deleteBusinessProfile(business)
                     }
                     businessToDelete = nil
                 }
             } message: {
-                Text("This cannot be undone.")
+                Text("This business will be archived and hidden from active lists.")
             }
-            .alert("Delete selected?", isPresented: $showBulkDeleteConfirmation) {
+            .alert("Archive selected?", isPresented: $showBulkDeleteConfirmation) {
                 Button("Cancel", role: .cancel) {
                     // Do nothing
                 }
-                Button("Delete", role: .destructive) {
+                Button("Archive", role: .destructive) {
                     deleteSelectedBusinessProfiles()
                 }
             } message: {
-                Text("This cannot be undone.")
+                Text("Selected businesses will be archived and hidden from active lists.")
             }
         }
     }
     
     private func deleteBusinessProfile(_ business: BusinessProfileModel) {
         withAnimation {
-            // Find all invoices referencing this business profile and set businessProfile to nil
-            let descriptor = FetchDescriptor<InvoiceModel>()
-            if let allInvoices = try? modelContext.fetch(descriptor) {
-                for invoice in allInvoices {
-                    if invoice.businessProfile == business {
-                        invoice.businessProfile = nil
-                    }
-                }
-            }
-            
-            modelContext.delete(business)
+            business.isArchived = true
+            business.archivedAt = Date()
+            business.updatedAt = Date()
         }
         
         do {
@@ -5191,18 +5380,10 @@ struct BusinessProfilesView: View {
         let businessesToDelete = filteredBusinessProfiles.filter { selectedBusinessIDs.contains($0.persistentModelID) }
         
         withAnimation {
-            // Find all invoices referencing these business profiles and set businessProfile to nil
-            let descriptor = FetchDescriptor<InvoiceModel>()
-            if let allInvoices = try? modelContext.fetch(descriptor) {
-                for invoice in allInvoices {
-                    if let businessProfile = invoice.businessProfile, businessesToDelete.contains(businessProfile) {
-                        invoice.businessProfile = nil
-                    }
-                }
-            }
-            
             for business in businessesToDelete {
-                modelContext.delete(business)
+                business.isArchived = true
+                business.archivedAt = Date()
+                business.updatedAt = Date()
             }
         }
         
