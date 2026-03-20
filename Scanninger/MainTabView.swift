@@ -1705,70 +1705,109 @@ struct InvoiceDetailView: View {
                 .cornerRadius(8)
                 .padding(.horizontal)
                 
-                Text("Invoice Details")
-                    .font(.title2)
-                    .padding(.horizontal)
-                
-                VStack(alignment: .leading, spacing: 12) {
-                    DetailRow(label: "Invoice Number", value: invoice.number)
-                    DetailRow(label: "Client Name", value: invoice.clientName)
-                    DetailRow(label: "Total Amount", value: formattedAmount)
-                    DetailRow(label: "Status", value: invoice.statusText)
-                    DetailRow(label: "Issue Date", value: formattedIssueDate)
-                    DetailRow(label: "Due Date", value: formattedDueDate)
-                    DetailRow(label: "Paid Date", value: invoice.isPaid && invoice.paidAt != nil ? formatPaidDate(invoice.paidAt!) : "—")
+                VStack {
+                    Text("Invoice Details")
+                        .font(.headline)
+                        .padding(.horizontal)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top)
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        DetailRow(label: "Invoice Number", value: invoice.number)
+                        DetailRow(label: "Client Name", value: invoice.clientName)
+                        DetailRow(label: "Total Amount", value: formattedAmount)
+                        DetailRow(label: "Status", value: invoice.statusText)
+                        DetailRow(label: "Issue Date", value: formattedIssueDate)
+                        DetailRow(label: "Due Date", value: formattedDueDate)
+                        DetailRow(label: "Paid Date", value: invoice.isPaid && invoice.paidAt != nil ? formatPaidDate(invoice.paidAt!) : "—")
+                    }
+                    .padding()
                 }
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
                 .padding()
-                
-                // Mark as Paid/Unpaid Button
-                Button(action: {
-                    togglePaidStatus()
-                }) {
-                    HStack {
-                        Image(systemName: invoice.isPaid ? "xmark.circle" : "checkmark.circle")
-                        Text(invoice.isPaid ? "Mark as Unpaid" : "Mark as Paid")
+                    
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Actions")
+                        .font(.headline)
+                        .padding(.horizontal)
+                    
+                    VStack(spacing: 0) {
+                        Button {
+                            togglePaidStatus()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "checkmark.circle")
+                                    .foregroundColor(invoice.isPaid ? .orange : .green)
+                                    .frame(width: 20)
+                                Text(invoice.isPaid ? "Mark as Unpaid" : "Mark as Paid")
+                                    .foregroundColor(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 13)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        
+                        Divider()
+                            .padding(.leading, 46)
+                        
+                        Button {
+                            showTemplateSelection = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "doc.text")
+                                    .foregroundColor(.blue)
+                                    .frame(width: 20)
+                                Text("Export PDF")
+                                    .foregroundColor(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                //                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 13)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        
+                        Divider()
+                            .padding(.leading, 46)
+                        
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                                    .frame(width: 20)
+                                Text("Delete Invoice")
+                                    .foregroundColor(.red)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 13)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(invoice.isPaid ? Color.orange : Color.green)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+                    .background(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    )
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
-                
-                // Create PDF Button
-                Button(action: {
-                    showTemplateSelection = true
-                }) {
-                    HStack {
-                        Image(systemName: "doc.fill")
-                        Text("Create PDF")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-                
-                // Delete Invoice Button
-                Button(action: {
-                    showDeleteConfirmation = true
-                }) {
-                    HStack {
-                        Image(systemName: "trash")
-                        Text("Delete Invoice")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.red)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                }
-                .padding(.horizontal)
                 .padding(.top, 8)
                 
                 Spacer()
