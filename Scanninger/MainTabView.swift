@@ -1989,6 +1989,7 @@ struct InvoiceDesignPickerView: View {
     @State private var errorMessage = ""
     @State private var showPreview = false
     @State private var previewPDFURL: URL?
+    private let a4AspectRatio: CGFloat = 210.0 / 297.0
     
     init(invoice: InvoiceModel) {
         self.invoice = invoice
@@ -2008,90 +2009,105 @@ struct InvoiceDesignPickerView: View {
             VStack(spacing: 0) {
                 // Live Preview Section
                 if let html = previewHTML {
-                    ScrollView {
-                        HTMLPreviewView(html: html)
-                            .frame(minHeight: 400)
-                            .padding()
+                    GeometryReader { geometry in
+                        let horizontalMargin: CGFloat = 28
+                        let verticalMargin: CGFloat = 18
+                        let availableWidth = max(geometry.size.width - (horizontalMargin * 2), 0)
+                        let availableHeight = max(geometry.size.height - (verticalMargin * 2), 0)
+                        let pageWidth = min(availableWidth, availableHeight * a4AspectRatio)
+                        
+                        ZStack {
+                            Color(.systemGray5)
+                            
+                            HTMLPreviewView(html: html)
+                                .frame(width: pageWidth, height: pageWidth / a4AspectRatio)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(Color.black.opacity(0.14), lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
+                        }
                     }
-                    .frame(maxHeight: 400)
-                    .background(Color(.systemGray6))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ProgressView("Generating preview...")
-                        .frame(maxHeight: 400)
                         .frame(maxWidth: .infinity)
-                        .background(Color(.systemGray6))
+                        .frame(maxHeight: .infinity)
+                        .background(Color(.systemGray5))
                 }
                 
                 Divider()
                 
-                // Template Selection Row (HTML templates)
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Layout")
-                        .font(.headline)
-                        .padding(.horizontal)
-                        .padding(.top, 16)
-                    
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            // Show supported HTML templates
-                            ForEach([PDFTemplate.professional, PDFTemplate.elegant], id: \.self) { template in
-                                TemplateOptionCard(
-                                    title: template.rawValue,
-                                    isSelected: selectedTemplate == template,
-                                    onTap: {
-                                        selectedTemplate = template
-                                        updatePreview()
-                                    }
-                                )
+                VStack(spacing: 10) {
+                    // Template Selection Row (HTML templates)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Layout")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                // Show supported HTML templates
+                                ForEach([PDFTemplate.professional, PDFTemplate.elegant], id: \.self) { template in
+                                    TemplateOptionCard(
+                                        title: template.rawValue,
+                                        isSelected: selectedTemplate == template,
+                                        onTap: {
+                                            selectedTemplate = template
+                                            updatePreview()
+                                        }
+                                    )
+                                }
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
                     }
-                }
-                
-                Divider()
-                
-                // Theme Selection Row
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Color Theme")
-                        .font(.headline)
-                        .padding(.horizontal)
-                        .padding(.top, 16)
                     
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(InvoiceColorTheme.allCases) { theme in
-                                ThemeOptionCard(
-                                    theme: theme,
-                                    isSelected: selectedTheme == theme,
-                                    onTap: {
-                                        selectedTheme = theme
-                                        updatePreview()
-                                    }
-                                )
+                    // Theme Selection Row
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Color Theme")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(InvoiceColorTheme.allCases) { theme in
+                                    ThemeOptionCard(
+                                        theme: theme,
+                                        isSelected: selectedTheme == theme,
+                                        onTap: {
+                                            selectedTheme = theme
+                                            updatePreview()
+                                        }
+                                    )
+                                }
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
                     }
-                }
-                
-                Spacer()
-                
-                // Bottom Actions
-                HStack(spacing: 16) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
                     
-                    Button("Continue") {
-                        saveAndContinue()
+                    // Bottom Actions
+                    HStack(spacing: 12) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                        
+                        Button("Continue") {
+                            saveAndContinue()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal)
+                    .padding(.top, 2)
                 }
-                .padding()
+                .padding(.vertical, 10)
                 .background(Color(.systemBackground))
             }
             .navigationTitle("Design Invoice")
@@ -2174,21 +2190,23 @@ struct TemplateOptionCard: View {
     
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Image(systemName: "doc.text.fill")
-                    .font(.title2)
+                    .font(.subheadline)
                     .foregroundColor(isSelected ? .blue : .secondary)
                 
                 Text(title)
-                    .font(.subheadline)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
                     .foregroundColor(.primary)
             }
-            .frame(width: 100, height: 80)
+            .frame(width: 92, height: 62)
             .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
-            .cornerRadius(12)
+            .cornerRadius(10)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 1.5)
             )
         }
         .buttonStyle(.plain)
@@ -2203,27 +2221,29 @@ struct ThemeOptionCard: View {
     
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 // Color swatch
                 HStack(spacing: 4) {
                     Circle()
                         .fill(Color(hex: theme.accentColor) ?? .blue)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 14, height: 14)
                     Circle()
                         .fill(Color(hex: theme.accentSoftColor) ?? .gray)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 14, height: 14)
                 }
                 
                 Text(theme.displayName)
-                    .font(.subheadline)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
                     .foregroundColor(.primary)
             }
-            .frame(width: 100, height: 80)
+            .frame(width: 92, height: 62)
             .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
-            .cornerRadius(12)
+            .cornerRadius(10)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 1.5)
             )
         }
         .buttonStyle(.plain)
@@ -2235,15 +2255,114 @@ struct HTMLPreviewView: UIViewRepresentable {
     let html: String
     
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = context.coordinator
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.scrollView.showsVerticalScrollIndicator = false
+        webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.isUserInteractionEnabled = false
         return webView
     }
     
     func updateUIView(_ webView: WKWebView, context: Context) {
-        webView.loadHTMLString(html, baseURL: Bundle.main.bundleURL)
+        let normalizedHTML = buildA4PreviewHTML(from: html)
+        if context.coordinator.lastLoadedHTML != normalizedHTML {
+            context.coordinator.lastLoadedHTML = normalizedHTML
+            webView.loadHTMLString(normalizedHTML, baseURL: Bundle.main.bundleURL)
+        } else {
+            context.coordinator.applyFitScale(on: webView)
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    private func buildA4PreviewHTML(from content: String) -> String {
+        // Strip any template-specific viewport so all templates render with identical scaling rules.
+        var sanitizedContent = content.replacingOccurrences(
+            of: #"<meta[^>]*name=["']viewport["'][^>]*>"#,
+            with: "",
+            options: .regularExpression
+        )
+        
+        let standardViewport = #"<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">"#
+        let previewResetStyle = """
+        <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #ffffff;
+        }
+        </style>
+        """
+        
+        if sanitizedContent.range(of: "</head>", options: .caseInsensitive) != nil {
+            sanitizedContent = sanitizedContent.replacingOccurrences(
+                of: "</head>",
+                with: "\(standardViewport)\n\(previewResetStyle)\n</head>",
+                options: .caseInsensitive
+            )
+        } else {
+            sanitizedContent = "\(standardViewport)\n\(previewResetStyle)\n\(sanitizedContent)"
+        }
+        
+        return sanitizedContent
+    }
+    
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var lastLoadedHTML: String?
+        
+        private let fitScript = """
+        (function() {
+            const root =
+                document.querySelector('.page') ||
+                document.querySelector('.invoice') ||
+                document.body.firstElementChild ||
+                document.body;
+            if (!root) { return; }
+        
+            root.style.transform = 'none';
+            root.style.transformOrigin = 'top left';
+        
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
+        
+            const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
+        
+            const rect = root.getBoundingClientRect();
+            if (!rect.width || !rect.height) { return; }
+        
+            const scale = Math.min(viewportWidth / rect.width, viewportHeight / rect.height);
+            const safeScale = (Number.isFinite(scale) && scale > 0) ? scale : 1;
+            const x = (viewportWidth - (rect.width * safeScale)) / 2;
+            const y = (viewportHeight - (rect.height * safeScale)) / 2;
+        
+            root.style.transform = `translate(${x}px, ${y}px) scale(${safeScale})`;
+            root.style.transformOrigin = 'top left';
+        })();
+        """
+        
+        func applyFitScale(on webView: WKWebView) {
+            webView.evaluateJavaScript(fitScript, completionHandler: nil)
+        }
+        
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            applyFitScale(on: webView)
+            // Re-apply after layout settles to avoid first-frame clipping.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.applyFitScale(on: webView)
+            }
+        }
     }
 }
 
@@ -3037,6 +3156,7 @@ struct HTMLInvoicePreviewSheet: View {
     let invoice: InvoiceModel
     @Binding var isGeneratingPDF: Bool
     let onBack: () -> Void
+    private let a4AspectRatio: CGFloat = 210.0 / 297.0
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
     @State private var shareItem: ShareItem?
@@ -3044,8 +3164,22 @@ struct HTMLInvoicePreviewSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                HTMLInvoicePreviewView(html: html)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                GeometryReader { geometry in
+                    let horizontalMargin: CGFloat = 16
+                    let verticalMargin: CGFloat = 14
+                    let availableWidth = max(geometry.size.width - (horizontalMargin * 2), 0)
+                    let availableHeight = max(geometry.size.height - (verticalMargin * 2), 0)
+                    let pageWidth = min(availableWidth, availableHeight * a4AspectRatio)
+                    
+                    ZStack {
+                        Color(.systemGray6)
+                            .ignoresSafeArea()
+                        
+                        HTMLInvoicePreviewView(html: html)
+                            .frame(width: pageWidth, height: pageWidth / a4AspectRatio)
+                            .background(Color.white)
+                    }
+                }
                 
                 if isGeneratingPDF {
                     Color.black.opacity(0.3)

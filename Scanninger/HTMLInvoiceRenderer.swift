@@ -357,32 +357,27 @@ struct HTMLInvoicePreviewView: UIViewRepresentable {
     let html: String
     
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
-        webView.backgroundColor = .systemBackground
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.scrollView.showsVerticalScrollIndicator = false
+        webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.isUserInteractionEnabled = false
         return webView
     }
     
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // Use Bundle.main.bundleURL as baseURL to ensure resources load correctly
-        let baseURL = Bundle.main.bundleURL
-        print("📄 Loading HTML into WKWebView, length: \(html.count) characters, baseURL: \(baseURL)")
-        
-        if html.isEmpty {
-            print("❌ HTML content is empty!")
-            let errorHTML = """
-            <!DOCTYPE html>
-            <html>
-            <head><meta charset="UTF-8"><title>Error</title></head>
-            <body style="font-family: -apple-system; padding: 40px;">
-                <h1 style="color: red;">Error: HTML content is empty</h1>
-                <p>The invoice template could not be loaded or rendered.</p>
-            </body>
-            </html>
-            """
-            webView.loadHTMLString(errorHTML, baseURL: baseURL)
+        let normalizedHTML = buildA4PreviewHTML(from: html)
+        if context.coordinator.lastLoadedHTML != normalizedHTML {
+            context.coordinator.lastLoadedHTML = normalizedHTML
+            webView.loadHTMLString(normalizedHTML, baseURL: Bundle.main.bundleURL)
         } else {
-            webView.loadHTMLString(html, baseURL: baseURL)
+            context.coordinator.applyFitScale(on: webView)
         }
     }
     
@@ -390,17 +385,90 @@ struct HTMLInvoicePreviewView: UIViewRepresentable {
         Coordinator()
     }
     
+    private func buildA4PreviewHTML(from content: String) -> String {
+        var sanitizedContent = content.replacingOccurrences(
+            of: #"<meta[^>]*name=["']viewport["'][^>]*>"#,
+            with: "",
+            options: .regularExpression
+        )
+        
+        let standardViewport = #"<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">"#
+        let previewResetStyle = """
+        <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #ffffff;
+        }
+        </style>
+        """
+        
+        if sanitizedContent.range(of: "</head>", options: .caseInsensitive) != nil {
+            sanitizedContent = sanitizedContent.replacingOccurrences(
+                of: "</head>",
+                with: "\(standardViewport)\n\(previewResetStyle)\n</head>",
+                options: .caseInsensitive
+            )
+        } else {
+            sanitizedContent = "\(standardViewport)\n\(previewResetStyle)\n\(sanitizedContent)"
+        }
+        
+        return sanitizedContent
+    }
+    
     class Coordinator: NSObject, WKNavigationDelegate {
+        var lastLoadedHTML: String?
+        
+        private let fitScript = """
+        (function() {
+            const root =
+                document.querySelector('.page') ||
+                document.querySelector('.invoice') ||
+                document.body.firstElementChild ||
+                document.body;
+            if (!root) { return; }
+        
+            root.style.transform = 'none';
+            root.style.transformOrigin = 'top left';
+        
+            document.documentElement.style.overflow = 'hidden';
+            document.body.style.overflow = 'hidden';
+        
+            const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
+            const rect = root.getBoundingClientRect();
+            if (!rect.width || !rect.height) { return; }
+        
+            const scale = Math.min(viewportWidth / rect.width, viewportHeight / rect.height);
+            const safeScale = (Number.isFinite(scale) && scale > 0) ? scale : 1;
+            const x = (viewportWidth - (rect.width * safeScale)) / 2;
+            const y = (viewportHeight - (rect.height * safeScale)) / 2;
+        
+            root.style.transform = `translate(${x}px, ${y}px) scale(${safeScale})`;
+            root.style.transformOrigin = 'top left';
+        })();
+        """
+        
+        func applyFitScale(on webView: WKWebView) {
+            webView.evaluateJavaScript(fitScript, completionHandler: nil)
+        }
+        
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            print("✅ WKWebView finished loading HTML")
+            applyFitScale(on: webView)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.applyFitScale(on: webView)
+            }
         }
         
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            print("❌ WKWebView failed to load: \(error.localizedDescription)")
+            print("HTML preview load failed: \(error.localizedDescription)")
         }
         
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            print("❌ WKWebView failed provisional navigation: \(error.localizedDescription)")
+            print("HTML preview provisional load failed: \(error.localizedDescription)")
         }
     }
 }
