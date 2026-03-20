@@ -71,18 +71,23 @@ struct HTMLInvoiceRenderer {
         let invoiceDate = dateFormatter.string(from: invoice.issueDate)
         
         // Format invoice period block (only if both dates exist)
-        // Support both modern and elegant template formats
+        // Support template-specific period blocks.
         let invoicePeriodBlock: String
         if let periodStart = invoice.periodStart, let periodEnd = invoice.periodEnd {
             let shortFormatter = DateFormatter()
             shortFormatter.dateFormat = "MMM d, yyyy"
             let periodText = "\(shortFormatter.string(from: periodStart)) – \(shortFormatter.string(from: periodEnd))"
-            // Modern template format
             let modernFormat = "<div><b>Invoice Period</b> \(escapeHTML(periodText))</div>"
-            // Elegant template format
             let elegantFormat = "<div class=\"meta-row\"><div class=\"meta-label\">Period</div><div class=\"meta-value\">\(escapeHTML(periodText))</div></div>"
-            // Use elegant format if template is elegant, otherwise modern format
-            invoicePeriodBlock = template == .elegant ? elegantFormat : modernFormat
+            let classicFormat = "<div style=\"margin:0 0 8mm 0;font-size:13px;font-weight:600;color:#111111;\">Period: \(escapeHTML(periodText))</div>"
+            switch template {
+            case .professional:
+                invoicePeriodBlock = modernFormat
+            case .elegant:
+                invoicePeriodBlock = elegantFormat
+            case .classic:
+                invoicePeriodBlock = classicFormat
+            }
         } else {
             invoicePeriodBlock = ""
         }
@@ -153,7 +158,12 @@ struct HTMLInvoiceRenderer {
         // Tax block (only if tax > 0)
         let taxBlock: String
         if taxAmount > 0 {
-            taxBlock = "<div class=\"total-row\"><div class=\"label\">Tax</div><div class=\"value\">\(escapeHTML(formattedTax))</div></div>"
+            switch template {
+            case .classic:
+                taxBlock = "<tr><td class=\"label\">Tax</td><td class=\"value\">\(escapeHTML(formattedTax))</td></tr>"
+            case .professional, .elegant:
+                taxBlock = "<div class=\"total-row\"><div class=\"label\">Tax</div><div class=\"value\">\(escapeHTML(formattedTax))</div></div>"
+            }
         } else {
             taxBlock = ""
         }
@@ -161,7 +171,12 @@ struct HTMLInvoiceRenderer {
         // Discount block (only if discount > 0)
         let discountBlock: String
         if discount > 0 {
-            discountBlock = "<div class=\"total-row\"><div class=\"label\">Discount</div><div class=\"value\">\(escapeHTML(formattedDiscount))</div></div>"
+            switch template {
+            case .classic:
+                discountBlock = "<tr><td class=\"label\">Discount</td><td class=\"value\">\(escapeHTML(formattedDiscount))</td></tr>"
+            case .professional, .elegant:
+                discountBlock = "<div class=\"total-row\"><div class=\"label\">Discount</div><div class=\"value\">\(escapeHTML(formattedDiscount))</div></div>"
+            }
         } else {
             discountBlock = ""
         }
@@ -223,6 +238,23 @@ struct HTMLInvoiceRenderer {
                     <td class="num">—</td>
                 </tr>
                 """
+            case .classic:
+                return """
+                <tr>
+                    <td>
+                        <div class="item-title">No items</div>
+                    </td>
+                    <td class="num">—</td>
+                    <td class="num">—</td>
+                    <td class="num">—</td>
+                </tr>
+                <tr class="empty-space-row">
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                """
             }
         }
         
@@ -250,6 +282,29 @@ struct HTMLInvoiceRenderer {
             
         case .elegant:
             // Elegant template uses proper HTML table rows
+            return items.map { item in
+                let title = escapeHTML(item.title)
+                let description = item.details.isEmpty ? "" : escapeHTML(item.details)
+                let rate = formatCurrency(item.price, currencyCode: currencyCode)
+                let qty = "\(item.qty) \(escapeHTML(item.unit))"
+                let amount = formatCurrency(item.total, currencyCode: currencyCode)
+                
+                var titleCell = "<div class=\"item-title\">\(title)</div>"
+                if !description.isEmpty {
+                    titleCell += "<div class=\"item-desc\">\(description)</div>"
+                }
+                
+                return """
+                <tr>
+                    <td>\(titleCell)</td>
+                    <td class="num">\(rate)</td>
+                    <td class="num">\(qty)</td>
+                    <td class="num">\(amount)</td>
+                </tr>
+                """
+            }.joined(separator: "\n")
+        case .classic:
+            // Classic template uses proper HTML table rows
             return items.map { item in
                 let title = escapeHTML(item.title)
                 let description = item.details.isEmpty ? "" : escapeHTML(item.details)
