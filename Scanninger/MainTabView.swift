@@ -1669,157 +1669,159 @@ struct InvoiceDetailView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Business Profile Section
-            VStack(alignment: .leading, spacing: 8) {
-                if !invoice.displayBusinessName.isEmpty {
-                    Text(invoice.displayBusinessName)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    if !invoice.displayBusinessEmail.isEmpty {
-                        Text(invoice.displayBusinessEmail)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    } else if !invoice.displayBusinessPhone.isEmpty {
-                        Text(invoice.displayBusinessPhone)
-                            .font(.subheadline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Business Profile Section
+                VStack(alignment: .leading, spacing: 8) {
+                    if !invoice.displayBusinessName.isEmpty {
+                        Text(invoice.displayBusinessName)
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        if !invoice.displayBusinessEmail.isEmpty {
+                            Text(invoice.displayBusinessEmail)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        } else if !invoice.displayBusinessPhone.isEmpty {
+                            Text(invoice.displayBusinessPhone)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        if !invoice.displayBusinessTaxId.isEmpty {
+                            Text("Tax ID: \(invoice.displayBusinessTaxId)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Text("No business information")
+                            .font(.headline)
                             .foregroundColor(.secondary)
                     }
-                    
-                    if !invoice.displayBusinessTaxId.isEmpty {
-                        Text("Tax ID: \(invoice.displayBusinessTaxId)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Text("No business information")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
                 }
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.systemGray6))
-            .cornerRadius(8)
-            .padding(.horizontal)
-            
-            Text("Invoice Details")
-                .font(.title2)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
                 .padding(.horizontal)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                DetailRow(label: "Invoice Number", value: invoice.number)
-                DetailRow(label: "Client Name", value: invoice.clientName)
-                DetailRow(label: "Total Amount", value: formattedAmount)
-                DetailRow(label: "Status", value: invoice.statusText)
-                DetailRow(label: "Issue Date", value: formattedIssueDate)
-                DetailRow(label: "Due Date", value: formattedDueDate)
-                DetailRow(label: "Paid Date", value: invoice.isPaid && invoice.paidAt != nil ? formatPaidDate(invoice.paidAt!) : "—")
-            }
-            .padding()
-            
-            // Mark as Paid/Unpaid Button
-            Button(action: {
-                togglePaidStatus()
-            }) {
-                HStack {
-                    Image(systemName: invoice.isPaid ? "xmark.circle" : "checkmark.circle")
-                    Text(invoice.isPaid ? "Mark as Unpaid" : "Mark as Paid")
+                
+                Text("Invoice Details")
+                    .font(.title2)
+                    .padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    DetailRow(label: "Invoice Number", value: invoice.number)
+                    DetailRow(label: "Client Name", value: invoice.clientName)
+                    DetailRow(label: "Total Amount", value: formattedAmount)
+                    DetailRow(label: "Status", value: invoice.statusText)
+                    DetailRow(label: "Issue Date", value: formattedIssueDate)
+                    DetailRow(label: "Due Date", value: formattedDueDate)
+                    DetailRow(label: "Paid Date", value: invoice.isPaid && invoice.paidAt != nil ? formatPaidDate(invoice.paidAt!) : "—")
                 }
-                .frame(maxWidth: .infinity)
                 .padding()
-                .background(invoice.isPaid ? Color.orange : Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-            
-            // Create PDF Button
-            Button(action: {
-                showTemplateSelection = true
-            }) {
-                HStack {
-                    Image(systemName: "doc.fill")
-                    Text("Create PDF")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-            
-            // Delete Invoice Button
-            Button(action: {
-                showDeleteConfirmation = true
-            }) {
-                HStack {
-                    Image(systemName: "trash")
-                    Text("Delete Invoice")
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.red)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-            
-            Spacer()
-        }
-        .navigationTitle("Invoice")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button {
-                        let duplicated = duplicateInvoice(invoice, modelContext: modelContext, allInvoices: allInvoices)
-                        invoiceToEdit = duplicated
-                        showEditInvoice = true
-                    } label: {
-                        Label("Duplicate", systemImage: "doc.on.doc")
+                
+                // Mark as Paid/Unpaid Button
+                Button(action: {
+                    togglePaidStatus()
+                }) {
+                    HStack {
+                        Image(systemName: invoice.isPaid ? "xmark.circle" : "checkmark.circle")
+                        Text(invoice.isPaid ? "Mark as Unpaid" : "Mark as Paid")
                     }
-                    
-                    Button {
-                        showEditInvoice = true
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(invoice.isPaid ? Color.orange : Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                
+                // Create PDF Button
+                Button(action: {
+                    showTemplateSelection = true
+                }) {
+                    HStack {
+                        Image(systemName: "doc.fill")
+                        Text("Create PDF")
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                
+                // Delete Invoice Button
+                Button(action: {
+                    showDeleteConfirmation = true
+                }) {
+                    HStack {
+                        Image(systemName: "trash")
+                        Text("Delete Invoice")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                
+                Spacer()
+            }
+            .navigationTitle("Invoice")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            let duplicated = duplicateInvoice(invoice, modelContext: modelContext, allInvoices: allInvoices)
+                            invoiceToEdit = duplicated
+                            showEditInvoice = true
+                        } label: {
+                            Label("Duplicate", systemImage: "doc.on.doc")
+                        }
+                        
+                        Button {
+                            showEditInvoice = true
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $showEditInvoice) {
-            if let invoiceToEdit = invoiceToEdit {
-                EditInvoiceView(invoice: invoiceToEdit)
-            } else {
-                EditInvoiceView(invoice: invoice)
+            .sheet(isPresented: $showEditInvoice) {
+                if let invoiceToEdit = invoiceToEdit {
+                    EditInvoiceView(invoice: invoiceToEdit)
+                } else {
+                    EditInvoiceView(invoice: invoice)
+                }
             }
-        }
-        .sheet(isPresented: $showTemplateSelection) {
-            InvoiceDesignPickerView(invoice: invoice)
-        }
-        .sheet(item: $shareItem) { item in
-            ShareSheet(items: [item.url])
-        }
-        .alert("Error", isPresented: $showErrorAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage)
-        }
-        .alert("Delete Invoice", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                deleteInvoice()
+            .sheet(isPresented: $showTemplateSelection) {
+                InvoiceDesignPickerView(invoice: invoice)
             }
-        } message: {
-            Text("Are you sure you want to delete this invoice? This action cannot be undone.")
+            .sheet(item: $shareItem) { item in
+                ShareSheet(items: [item.url])
+            }
+            .alert("Error", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
+            }
+            .alert("Delete Invoice", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    deleteInvoice()
+                }
+            } message: {
+                Text("Are you sure you want to delete this invoice? This action cannot be undone.")
+            }
         }
     }
     
@@ -4277,6 +4279,10 @@ struct ReportsView: View {
         }
     }
     
+    private var selectedBusinessScopeLabel: String {
+        selectedBusiness?.name ?? "Overall"
+    }
+    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -4296,18 +4302,46 @@ struct ReportsView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, 100)
                     } else {
-                        // Business Selector
-                        VStack(spacing: 12) {
-                            Picker("Business", selection: $selectedBusiness) {
-                                Text("Overall").tag(nil as BusinessProfileModel?)
-                                ForEach(businessProfiles) { profile in
-                                    Text(profile.name).tag(profile as BusinessProfileModel?)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Reports")
+                                .font(.largeTitle)
+                                .fontWeight(.bold)
+                            
+                            Menu {
+                                Button {
+                                    selectedBusiness = nil
+                                } label: {
+                                    Label("Overall", systemImage: selectedBusiness == nil ? "checkmark" : "")
                                 }
+                                
+                                ForEach(businessProfiles) { profile in
+                                    Button {
+                                        selectedBusiness = profile
+                                    } label: {
+                                        Label(profile.name, systemImage: selectedBusiness == profile ? "checkmark" : "")
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "line.3.horizontal.decrease.circle")
+                                        .font(.subheadline)
+                                    Text(selectedBusinessScopeLabel)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .lineLimit(1)
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption2)
+                                }
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemGray6))
+                                .clipShape(Capsule())
                             }
-                            .pickerStyle(.menu)
-                            .padding(.horizontal)
                         }
-                        .padding(.top, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 4)
                         
                         // Period Selector
                         VStack(spacing: 16) {
@@ -4336,7 +4370,7 @@ struct ReportsView: View {
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.top, 8)
+                        .padding(.top, 2)
                         
                         // Mixed currencies note
                         if hasMixedCurrencies {
@@ -4734,7 +4768,7 @@ struct ReportsView: View {
                     }
                 }
             }
-            .navigationTitle("Reports")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showCustomRangePicker) {
                 CustomRangePickerView(startDate: $customStartDate, endDate: $customEndDate)
             }
