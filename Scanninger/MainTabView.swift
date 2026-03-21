@@ -312,6 +312,36 @@ func normalizedClientName(_ name: String) -> String {
     normalizedBusinessName(name)
 }
 
+/// Whether another **active** business already uses the same normalized name (`excludingBusinessId` = row being edited).
+func hasConflictingActiveBusinessName(
+    rawName: String,
+    among profiles: [BusinessProfileModel],
+    excludingBusinessId: UUID? = nil
+) -> Bool {
+    let normalized = normalizedBusinessName(rawName)
+    guard !normalized.isEmpty else { return false }
+    return profiles.contains { profile in
+        guard !profile.isArchived else { return false }
+        if let exclude = excludingBusinessId, profile.id == exclude { return false }
+        return normalizedBusinessName(profile.name) == normalized
+    }
+}
+
+/// Whether another **active** client already uses the same normalized name (`excludingClientId` = row being edited).
+func hasConflictingActiveClientName(
+    rawName: String,
+    among clients: [ClientModel],
+    excludingClientId: UUID? = nil
+) -> Bool {
+    let normalized = normalizedClientName(rawName)
+    guard !normalized.isEmpty else { return false }
+    return clients.contains { client in
+        guard !client.isArchived else { return false }
+        if let exclude = excludingClientId, client.id == exclude { return false }
+        return normalizedClientName(client.name) == normalized
+    }
+}
+
 /// Normalizes invoice snapshot business names for report grouping (same rules as `normalizedBusinessName`).
 func normalizedReportBusinessName(_ name: String) -> String {
     normalizedBusinessName(name)
@@ -3466,6 +3496,8 @@ struct CreateBusinessProfileView: View {
     @State private var showLogoPreview = false
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
+    /// Hides duplicate UI after a passed save so `@Query` (which includes the new row) cannot flash a false duplicate.
+    @State private var suppressDuplicateNameFeedback = false
     
     init(onSave: ((BusinessProfileModel) -> Void)? = nil) {
         self.onSave = onSave
@@ -3531,6 +3563,9 @@ struct CreateBusinessProfileView: View {
                     }
                 }
             }
+            .onChange(of: name) { _, _ in
+                suppressDuplicateNameFeedback = false
+            }
             .navigationTitle("New Business Profile")
             .sheet(isPresented: $showLogoPreview) {
                 LogoPreviewView(logoData: logoData)
@@ -3558,9 +3593,8 @@ struct CreateBusinessProfileView: View {
     }
     
     private var isDuplicateName: Bool {
-        let normalized = normalizedBusinessName(name)
-        guard !normalized.isEmpty else { return false }
-        return businessProfiles.contains { !$0.isArchived && normalizedBusinessName($0.name) == normalized }
+        if suppressDuplicateNameFeedback { return false }
+        return hasConflictingActiveBusinessName(rawName: name, among: businessProfiles, excludingBusinessId: nil)
     }
     
     private var isValid: Bool {
@@ -3568,11 +3602,15 @@ struct CreateBusinessProfileView: View {
     }
     
     private func saveBusinessProfile() {
-        if isDuplicateName {
+        let conflict = hasConflictingActiveBusinessName(rawName: name, among: businessProfiles, excludingBusinessId: nil)
+        if conflict {
+            suppressDuplicateNameFeedback = false
             validationMessage = "Please choose a different business name. Active business names must be unique."
             showValidationAlert = true
             return
         }
+        
+        suppressDuplicateNameFeedback = true
         
         let business = BusinessProfileModel(
             name: name,
@@ -3592,6 +3630,7 @@ struct CreateBusinessProfileView: View {
             onSave?(business)
             dismiss()
         } catch {
+            suppressDuplicateNameFeedback = false
             print("Failed to save business profile: \(error)")
         }
     }
@@ -3615,6 +3654,7 @@ struct EditBusinessProfileView: View {
     @State private var showLogoPreview = false
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
+    @State private var suppressDuplicateNameFeedback = false
     
     init(business: BusinessProfileModel) {
         self.business = business
@@ -3686,6 +3726,9 @@ struct EditBusinessProfileView: View {
                     }
                 }
             }
+            .onChange(of: name) { _, _ in
+                suppressDuplicateNameFeedback = false
+            }
             .navigationTitle("Edit Business Profile")
             .sheet(isPresented: $showLogoPreview) {
                 LogoPreviewView(logoData: logoData)
@@ -3707,13 +3750,12 @@ struct EditBusinessProfileView: View {
     }
     
     private var isDuplicateName: Bool {
-        let normalized = normalizedBusinessName(name)
-        guard !normalized.isEmpty else { return false }
-        return businessProfiles.contains {
-            !$0.isArchived &&
-            $0.id != business.id &&
-            normalizedBusinessName($0.name) == normalized
-        }
+        if suppressDuplicateNameFeedback { return false }
+        return hasConflictingActiveBusinessName(
+            rawName: name,
+            among: businessProfiles,
+            excludingBusinessId: business.id
+        )
     }
     
     private var isValid: Bool {
@@ -3721,11 +3763,19 @@ struct EditBusinessProfileView: View {
     }
     
     private func saveBusinessProfile() {
-        if isDuplicateName {
+        let conflict = hasConflictingActiveBusinessName(
+            rawName: name,
+            among: businessProfiles,
+            excludingBusinessId: business.id
+        )
+        if conflict {
+            suppressDuplicateNameFeedback = false
             validationMessage = "Please choose a different business name. Active business names must be unique."
             showValidationAlert = true
             return
         }
+        
+        suppressDuplicateNameFeedback = true
         
         business.name = name
         business.address = address
@@ -3739,6 +3789,7 @@ struct EditBusinessProfileView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            suppressDuplicateNameFeedback = false
             print("Failed to save business profile: \(error)")
         }
     }
@@ -3762,11 +3813,11 @@ struct CreateClientView: View {
     @State private var showLogoPreview = false
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
+    @State private var suppressDuplicateNameFeedback = false
     
     private var isDuplicateName: Bool {
-        let normalized = normalizedClientName(name)
-        guard !normalized.isEmpty else { return false }
-        return clients.contains { !$0.isArchived && normalizedClientName($0.name) == normalized }
+        if suppressDuplicateNameFeedback { return false }
+        return hasConflictingActiveClientName(rawName: name, among: clients, excludingClientId: nil)
     }
     
     private var isValid: Bool {
@@ -3832,6 +3883,9 @@ struct CreateClientView: View {
                             .foregroundColor(.red)
                     }
                 }
+            }
+            .onChange(of: name) { _, _ in
+                suppressDuplicateNameFeedback = false
             }
             .navigationTitle("New Client")
             .sheet(isPresented: $showLogoPreview) {
@@ -3860,11 +3914,15 @@ struct CreateClientView: View {
     }
     
     private func saveClient() {
-        if isDuplicateName {
+        let conflict = hasConflictingActiveClientName(rawName: name, among: clients, excludingClientId: nil)
+        if conflict {
+            suppressDuplicateNameFeedback = false
             validationMessage = "Please choose a different client name. Active client names must be unique."
             showValidationAlert = true
             return
         }
+        
+        suppressDuplicateNameFeedback = true
         
         let client = ClientModel(
             name: name,
@@ -3882,6 +3940,7 @@ struct CreateClientView: View {
             onSave?(client)
             dismiss()
         } catch {
+            suppressDuplicateNameFeedback = false
             print("Failed to save client: \(error)")
         }
     }
@@ -3905,6 +3964,7 @@ struct EditClientView: View {
     @State private var showLogoPreview = false
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
+    @State private var suppressDuplicateNameFeedback = false
     
     init(client: ClientModel) {
         self.client = client
@@ -3917,13 +3977,12 @@ struct EditClientView: View {
     }
     
     private var isDuplicateName: Bool {
-        let normalized = normalizedClientName(name)
-        guard !normalized.isEmpty else { return false }
-        return clients.contains {
-            !$0.isArchived &&
-            $0.id != client.id &&
-            normalizedClientName($0.name) == normalized
-        }
+        if suppressDuplicateNameFeedback { return false }
+        return hasConflictingActiveClientName(
+            rawName: name,
+            among: clients,
+            excludingClientId: client.id
+        )
     }
     
     private var isValid: Bool {
@@ -3990,6 +4049,9 @@ struct EditClientView: View {
                     }
                 }
             }
+            .onChange(of: name) { _, _ in
+                suppressDuplicateNameFeedback = false
+            }
             .navigationTitle("Edit Client")
             .sheet(isPresented: $showLogoPreview) {
                 LogoPreviewView(logoData: logoData)
@@ -4011,11 +4073,19 @@ struct EditClientView: View {
     }
     
     private func saveClient() {
-        if isDuplicateName {
+        let conflict = hasConflictingActiveClientName(
+            rawName: name,
+            among: clients,
+            excludingClientId: client.id
+        )
+        if conflict {
+            suppressDuplicateNameFeedback = false
             validationMessage = "Please choose a different client name. Active client names must be unique."
             showValidationAlert = true
             return
         }
+        
+        suppressDuplicateNameFeedback = true
         
         client.name = name
         client.address = address
@@ -4029,6 +4099,7 @@ struct EditClientView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            suppressDuplicateNameFeedback = false
             print("Failed to save client: \(error)")
         }
     }
