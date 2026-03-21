@@ -307,6 +307,11 @@ func normalizedBusinessName(_ name: String) -> String {
         .lowercased()
 }
 
+/// Normalizes client profile names for duplicate checks (same rules as `normalizedBusinessName`).
+func normalizedClientName(_ name: String) -> String {
+    normalizedBusinessName(name)
+}
+
 /// Normalizes invoice snapshot business names for report grouping (same rules as `normalizedBusinessName`).
 func normalizedReportBusinessName(_ name: String) -> String {
     normalizedBusinessName(name)
@@ -3743,6 +3748,7 @@ struct EditBusinessProfileView: View {
 struct CreateClientView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \ClientModel.name) private var clients: [ClientModel]
     
     var onSave: ((ClientModel) -> Void)?
     
@@ -3754,6 +3760,18 @@ struct CreateClientView: View {
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showLogoPreview = false
+    @State private var showValidationAlert = false
+    @State private var validationMessage = ""
+    
+    private var isDuplicateName: Bool {
+        let normalized = normalizedClientName(name)
+        guard !normalized.isEmpty else { return false }
+        return clients.contains { !$0.isArchived && normalizedClientName($0.name) == normalized }
+    }
+    
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isDuplicateName
+    }
     
     var body: some View {
         NavigationStack {
@@ -3807,6 +3825,12 @@ struct CreateClientView: View {
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                     TextField("Tax ID (optional)", text: $taxId)
+                    
+                    if isDuplicateName {
+                        Text("An active client with this name already exists.")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
             }
             .navigationTitle("New Client")
@@ -3827,14 +3851,21 @@ struct CreateClientView: View {
                     .disabled(!isValid)
                 }
             }
+            .alert("Validation", isPresented: $showValidationAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(validationMessage)
+            }
         }
     }
     
-    private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-    
     private func saveClient() {
+        if isDuplicateName {
+            validationMessage = "Please choose a different client name. Active client names must be unique."
+            showValidationAlert = true
+            return
+        }
+        
         let client = ClientModel(
             name: name,
             address: address,
@@ -3860,6 +3891,7 @@ struct CreateClientView: View {
 struct EditClientView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \ClientModel.name) private var clients: [ClientModel]
     
     let client: ClientModel
     
@@ -3871,6 +3903,8 @@ struct EditClientView: View {
     @State private var logoData: Data?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showLogoPreview = false
+    @State private var showValidationAlert = false
+    @State private var validationMessage = ""
     
     init(client: ClientModel) {
         self.client = client
@@ -3880,6 +3914,20 @@ struct EditClientView: View {
         _email = State(initialValue: client.email)
         _taxId = State(initialValue: client.taxId)
         _logoData = State(initialValue: client.logoData)
+    }
+    
+    private var isDuplicateName: Bool {
+        let normalized = normalizedClientName(name)
+        guard !normalized.isEmpty else { return false }
+        return clients.contains {
+            !$0.isArchived &&
+            $0.id != client.id &&
+            normalizedClientName($0.name) == normalized
+        }
+    }
+    
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isDuplicateName
     }
     
     var body: some View {
@@ -3934,6 +3982,12 @@ struct EditClientView: View {
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
                     TextField("Tax ID (optional)", text: $taxId)
+                    
+                    if isDuplicateName {
+                        Text("An active client with this name already exists.")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
             }
             .navigationTitle("Edit Client")
@@ -3948,14 +4002,21 @@ struct EditClientView: View {
                     .disabled(!isValid)
                 }
             }
+            .alert("Validation", isPresented: $showValidationAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(validationMessage)
+            }
         }
     }
     
-    private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-    
     private func saveClient() {
+        if isDuplicateName {
+            validationMessage = "Please choose a different client name. Active client names must be unique."
+            showValidationAlert = true
+            return
+        }
+        
         client.name = name
         client.address = address
         client.phone = phone
