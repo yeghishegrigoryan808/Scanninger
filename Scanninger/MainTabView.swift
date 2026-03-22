@@ -2264,22 +2264,26 @@ struct InvoiceDesignPickerView: View {
                         let availableWidth = max(geometry.size.width - (horizontalMargin * 2), 0)
                         let availableHeight = max(geometry.size.height - (verticalMargin * 2), 0)
                         let pageWidth = min(availableWidth, availableHeight * a4AspectRatio)
+                        let pageHeight = pageWidth / a4AspectRatio
                         
                         ZStack {
                             Color(.systemGray5)
                             
                             HTMLPreviewView(html: html)
-                                .frame(width: pageWidth, height: pageWidth / a4AspectRatio)
+                                .frame(width: pageWidth, height: pageHeight)
                                 .background(Color.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .clipped()
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 4)
                                         .stroke(Color.black.opacity(0.14), lineWidth: 1)
                                 )
                                 .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
                 } else {
                     ProgressView("Generating preview...")
                         .frame(maxWidth: .infinity)
@@ -2403,7 +2407,11 @@ struct InvoiceDesignPickerView: View {
         DispatchQueue.main.async {
             do {
                 let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme, template: selectedTemplate)
-                previewHTML = html
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    previewHTML = html
+                }
                 isGeneratingPreview = false
             } catch {
                 errorMessage = "Failed to generate preview: \(error.localizedDescription)"
@@ -2514,7 +2522,10 @@ struct HTMLPreviewView: UIViewRepresentable {
         webView.scrollView.bounces = false
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.scrollView.clipsToBounds = true
         webView.isUserInteractionEnabled = false
+        // Hide until JS fit-scale runs; avoids one frame of unscaled (zoomed) document.
+        webView.alpha = 0
         return webView
     }
     
@@ -2522,9 +2533,10 @@ struct HTMLPreviewView: UIViewRepresentable {
         let normalizedHTML = buildA4PreviewHTML(from: html)
         if context.coordinator.lastLoadedHTML != normalizedHTML {
             context.coordinator.lastLoadedHTML = normalizedHTML
+            context.coordinator.prepareForNewLoad(webView: webView)
             webView.loadHTMLString(normalizedHTML, baseURL: Bundle.main.bundleURL)
         } else {
-            context.coordinator.applyFitScale(on: webView)
+            context.coordinator.applyFitScale(on: webView, completion: nil)
         }
     }
     
@@ -2569,6 +2581,17 @@ struct HTMLPreviewView: UIViewRepresentable {
     
     class Coordinator: NSObject, WKNavigationDelegate {
         var lastLoadedHTML: String?
+        /// Monotonic id for each `loadHTMLString`; `outstandingLoadGenerations` pairs finishes/cancels with prepares.
+        private var loadGeneration: UInt64 = 0
+        private var outstandingLoadGenerations: [UInt64] = []
+        
+        func prepareForNewLoad(webView: WKWebView) {
+            loadGeneration += 1
+            outstandingLoadGenerations.append(loadGeneration)
+            UIView.performWithoutAnimation {
+                webView.alpha = 0
+            }
+        }
         
         private let fitScript = """
         (function() {
@@ -2601,16 +2624,54 @@ struct HTMLPreviewView: UIViewRepresentable {
         })();
         """
         
-        func applyFitScale(on webView: WKWebView) {
-            webView.evaluateJavaScript(fitScript, completionHandler: nil)
+        func applyFitScale(on webView: WKWebView, completion: (() -> Void)?) {
+            webView.evaluateJavaScript(fitScript) { _, _ in
+                DispatchQueue.main.async {
+                    completion?()
+                }
+            }
         }
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            applyFitScale(on: webView)
-            // Re-apply after layout settles to avoid first-frame clipping.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                self.applyFitScale(on: webView)
+            guard !outstandingLoadGenerations.isEmpty else { return }
+            let finishedGen = outstandingLoadGenerations.removeFirst()
+            applyFitScale(on: webView, completion: {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    self.applyFitScale(on: webView, completion: {
+                        DispatchQueue.main.async {
+                            // Only reveal if this navigation is still the latest (avoids stale callbacks when switching fast).
+                            guard finishedGen == self.loadGeneration else { return }
+                            UIView.performWithoutAnimation {
+                                webView.alpha = 1
+                            }
+                        }
+                    })
+                }
+            })
+        }
+        
+        private func handleNavigationFailure(webView: WKWebView, error: Error) {
+            let code = (error as NSError).code
+            if code == NSURLErrorCancelled {
+                if !outstandingLoadGenerations.isEmpty {
+                    outstandingLoadGenerations.removeFirst()
+                }
+                return
             }
+            DispatchQueue.main.async {
+                if !self.outstandingLoadGenerations.isEmpty {
+                    self.outstandingLoadGenerations.removeFirst()
+                }
+                webView.alpha = 1
+            }
+        }
+        
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            handleNavigationFailure(webView: webView, error: error)
+        }
+        
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            handleNavigationFailure(webView: webView, error: error)
         }
     }
 }
