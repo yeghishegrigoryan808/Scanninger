@@ -12,13 +12,20 @@ import Foundation
 
 enum PaywallAppStorageKeys {
     /// When `true`, the user completed the paywall flow and should not see it again (until reset).
+    /// **This is the only persisted flag that gates `ScanningerRootView` (main app vs paywall).**
     static let hasPassedPaywall = "paywall.hasPassedPaywall"
 }
 
-/// Clears persisted paywall state for testing (e.g. from a future debug menu or one-off call).
+/// Resets draft paywall / mock-auth persisted state (logout, testing).
 enum PaywallReset {
+    /// Sets all draft session flags so the root flow shows the paywall again (after splash).
+    static func resetDraftSession() {
+        UserDefaults.standard.set(false, forKey: PaywallAppStorageKeys.hasPassedPaywall)
+    }
+
+    /// Same as `resetDraftSession()` — kept for call sites that only cleared the pass flag.
     static func clearPassedPaywallFlag() {
-        UserDefaults.standard.removeObject(forKey: PaywallAppStorageKeys.hasPassedPaywall)
+        resetDraftSession()
     }
 }
 

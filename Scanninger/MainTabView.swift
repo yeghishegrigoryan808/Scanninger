@@ -5423,10 +5423,13 @@ struct ProfileView: View {
             }
             .navigationTitle("Settings")
             .preferredColorScheme(appearanceMode == "system" ? nil : (appearanceMode == "light" ? .light : .dark))
-            .alert("Logout", isPresented: $showLogoutAlert) {
-                Button("OK", role: .cancel) { }
+            .alert("Log out", isPresented: $showLogoutAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Log out", role: .destructive) {
+                    PaywallReset.resetDraftSession()
+                }
             } message: {
-                Text("Logout coming soon")
+                Text("You’ll return to the welcome screen. (Draft mock flow — no real sign-out yet.)")
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 4) {
