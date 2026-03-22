@@ -16,7 +16,7 @@ struct ScanningerApp: App {
         let container = try! ModelContainer(for: schema, configurations: [modelConfiguration])
         
         return WindowGroup {
-            MainTabView()
+            ScanningerRootView()
         }
         .modelContainer(container)
     }
