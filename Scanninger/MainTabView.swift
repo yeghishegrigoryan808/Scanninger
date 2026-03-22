@@ -912,6 +912,7 @@ struct CreateInvoiceView: View {
     @State private var showCreateClient = false
     @State private var itemIndexToDelete: Int?
     @State private var showDeleteItemAlert = false
+    @FocusState private var focusedLineItemTitleId: UUID?
     
     private var activeBusinessProfiles: [BusinessProfileModel] {
         businessProfiles.filter { !$0.isArchived }
@@ -946,9 +947,31 @@ struct CreateInvoiceView: View {
         subtotal + taxAmount
     }
     
+    /// Appends without animating list insertion, then performs a single `scrollTo`; focus runs after the scroll animation so the keyboard does not fight the scroll.
+    private func addLineItem(_ newItem: LineItemData, scrollProxy: ScrollViewProxy) {
+        let targetId = newItem.id
+        var insertTransaction = Transaction()
+        insertTransaction.disablesAnimations = true
+        withTransaction(insertTransaction) {
+            lineItems.append(newItem)
+        }
+        DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                let scrollDuration: TimeInterval = 0.32
+                withAnimation(.easeInOut(duration: scrollDuration)) {
+                    scrollProxy.scrollTo(targetId, anchor: .bottom)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + scrollDuration + 0.04) {
+                    focusedLineItemTitleId = targetId
+                }
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
-            Form {
+            ScrollViewReader { proxy in
+                List {
                 Section("Business") {
                     if activeBusinessProfiles.isEmpty {
                         VStack(spacing: 12) {
@@ -1029,45 +1052,52 @@ struct CreateInvoiceView: View {
                 Section("Line Items") {
                     ForEach(Array(lineItems.enumerated()), id: \.element.id) { index, item in
                         if index < lineItems.count {
-                            LineItemRow(item: Binding(
-                                get: { lineItems[index] },
-                                set: { lineItems[index] = $0 }
-                            ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
-                                if lineItems.count > 1 {
-                                    itemIndexToDelete = index
-                                    showDeleteItemAlert = true
+                            LineItemRow(
+                                focusedTitleItemId: $focusedLineItemTitleId,
+                                item: Binding(
+                                    get: { lineItems[index] },
+                                    set: { lineItems[index] = $0 }
+                                ),
+                                currencyCode: currencyCode,
+                                canDelete: lineItems.count > 1,
+                                onDelete: {
+                                    if lineItems.count > 1 {
+                                        itemIndexToDelete = index
+                                        showDeleteItemAlert = true
+                                    }
                                 }
-                            })
+                            )
+                            .id(item.id)
                         }
                     }
                     
                     Menu {
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "pcs"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "pcs"), scrollProxy: proxy)
                         } label: {
                             Label("Product (pcs)", systemImage: "cube")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "hours"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "hours"), scrollProxy: proxy)
                         } label: {
                             Label("Service (hours)", systemImage: "clock")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "days"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "days"), scrollProxy: proxy)
                         } label: {
                             Label("Service (days)", systemImage: "calendar")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "project"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "project"), scrollProxy: proxy)
                         } label: {
                             Label("Fixed fee (project)", systemImage: "doc.text")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: ""))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: ""), scrollProxy: proxy)
                         } label: {
                             Label("Custom", systemImage: "slider.horizontal.3")
                         }
@@ -1101,6 +1131,9 @@ struct CreateInvoiceView: View {
                             .fontWeight(.semibold)
                     }
                 }
+                }
+                .listStyle(.insetGrouped)
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("New Invoice")
             .toolbar {
@@ -1343,6 +1376,7 @@ struct EditInvoiceView: View {
     @State private var showCreateClient = false
     @State private var itemIndexToDelete: Int?
     @State private var showDeleteItemAlert = false
+    @FocusState private var focusedLineItemTitleId: UUID?
     
     private var activeBusinessProfiles: [BusinessProfileModel] {
         businessProfiles.filter { !$0.isArchived }
@@ -1372,9 +1406,30 @@ struct EditInvoiceView: View {
         subtotal + taxAmount
     }
     
+    private func addLineItem(_ newItem: LineItemData, scrollProxy: ScrollViewProxy) {
+        let targetId = newItem.id
+        var insertTransaction = Transaction()
+        insertTransaction.disablesAnimations = true
+        withTransaction(insertTransaction) {
+            lineItems.append(newItem)
+        }
+        DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                let scrollDuration: TimeInterval = 0.32
+                withAnimation(.easeInOut(duration: scrollDuration)) {
+                    scrollProxy.scrollTo(targetId, anchor: .bottom)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + scrollDuration + 0.04) {
+                    focusedLineItemTitleId = targetId
+                }
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
-            Form {
+            ScrollViewReader { proxy in
+                List {
                 Section("Business") {
                     if activeBusinessProfiles.isEmpty {
                         VStack(spacing: 12) {
@@ -1454,42 +1509,49 @@ struct EditInvoiceView: View {
                 
                 Section("Line Items") {
                     ForEach(Array(lineItems.enumerated()), id: \.element.id) { index, item in
-                        LineItemRow(item: Binding(
-                            get: { lineItems[index] },
-                            set: { lineItems[index] = $0 }
-                        ), currencyCode: currencyCode, canDelete: lineItems.count > 1, onDelete: {
-                            itemIndexToDelete = index
-                            showDeleteItemAlert = true
-                        })
+                        LineItemRow(
+                            focusedTitleItemId: $focusedLineItemTitleId,
+                            item: Binding(
+                                get: { lineItems[index] },
+                                set: { lineItems[index] = $0 }
+                            ),
+                            currencyCode: currencyCode,
+                            canDelete: lineItems.count > 1,
+                            onDelete: {
+                                itemIndexToDelete = index
+                                showDeleteItemAlert = true
+                            }
+                        )
+                        .id(item.id)
                     }
                     
                     Menu {
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "pcs"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "pcs"), scrollProxy: proxy)
                         } label: {
                             Label("Product (pcs)", systemImage: "cube")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "hours"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "hours"), scrollProxy: proxy)
                         } label: {
                             Label("Service (hours)", systemImage: "clock")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "days"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "days"), scrollProxy: proxy)
                         } label: {
                             Label("Service (days)", systemImage: "calendar")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: "project"))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: "project"), scrollProxy: proxy)
                         } label: {
                             Label("Fixed fee (project)", systemImage: "doc.text")
                         }
                         
                         Button {
-                            lineItems.append(LineItemData(title: "", qty: 1, price: 0.0, unit: ""))
+                            addLineItem(LineItemData(title: "", qty: 1, price: 0.0, unit: ""), scrollProxy: proxy)
                         } label: {
                             Label("Custom", systemImage: "slider.horizontal.3")
                         }
@@ -1523,6 +1585,9 @@ struct EditInvoiceView: View {
                             .fontWeight(.semibold)
                     }
                 }
+                }
+                .listStyle(.insetGrouped)
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Edit Invoice")
             .toolbar {
@@ -1688,6 +1753,7 @@ struct LineItemData: Identifiable {
 
 // MARK: - Line Item Row
 struct LineItemRow: View {
+    @FocusState.Binding var focusedTitleItemId: UUID?
     @Binding var item: LineItemData
     var currencyCode: String
     var canDelete: Bool
@@ -1701,6 +1767,7 @@ struct LineItemRow: View {
         VStack(alignment: .leading, spacing: 12) {
             // Row 1: Item title
             TextField("Item name", text: $item.title)
+                .focused($focusedTitleItemId, equals: item.id)
                 .onChange(of: item.title) { oldValue, newValue in
                     if newValue.count > 50 {
                         item.title = String(newValue.prefix(50))
