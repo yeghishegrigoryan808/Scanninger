@@ -7,6 +7,9 @@
 //  2. In ScanningerApp.swift, use MainTabView() directly again
 //  3. Remove the Lottie package (Project → Package Dependencies)
 //
+//  Flow: Splash → (optional) WelcomePaywallView if `PaywallAppStorageKeys.hasPassedPaywall` is false → MainTabView.
+//  Reset draft paywall: `PaywallReset.clearPassedPaywallFlag()` or delete app.
+//
 
 import SwiftUI
 import UIKit
@@ -163,13 +166,29 @@ struct SplashView: View {
 // MARK: - App shell (swap root here when removing splash)
 
 struct ScanningerRootView: View {
+    @AppStorage(PaywallAppStorageKeys.hasPassedPaywall) private var hasPassedPaywall = false
     @State private var showSplash = true
+
+    /// Main tabs are visible only after splash ends and the user has completed the draft paywall (or skipped via persisted flag).
+    private var showMainApp: Bool {
+        !showSplash && hasPassedPaywall
+    }
 
     var body: some View {
         ZStack {
             MainTabView()
-                .opacity(showSplash ? 0 : 1)
-                .allowsHitTesting(!showSplash)
+                .opacity(showMainApp ? 1 : 0)
+                .allowsHitTesting(showMainApp)
+
+            if !showSplash && !hasPassedPaywall {
+                WelcomePaywallView {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        hasPassedPaywall = true
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .zIndex(1)
+            }
 
             if showSplash {
                 SplashView {
@@ -178,8 +197,10 @@ struct ScanningerRootView: View {
                     }
                 }
                 .transition(.opacity)
-                .zIndex(1)
+                .zIndex(2)
             }
         }
+        .animation(.easeOut(duration: 0.28), value: showSplash)
+        .animation(.easeOut(duration: 0.28), value: hasPassedPaywall)
     }
 }
