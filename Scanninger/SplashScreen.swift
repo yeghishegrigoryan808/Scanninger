@@ -7,8 +7,8 @@
 //  2. In ScanningerApp.swift, use MainTabView() directly again
 //  3. Remove the Lottie package (Project → Package Dependencies)
 //
-//  Flow: Splash → (optional) WelcomePaywallView if `PaywallAppStorageKeys.hasPassedPaywall` is false → MainTabView.
-//  Reset draft paywall: `PaywallReset.clearPassedPaywallFlag()` or delete app.
+//  Flow: Splash → Onboarding → SignInView → PaywallView → MainTabView.
+//  Logout: `PaywallReset.resetDraftSession()` (sign-in + unlock cleared; onboarding kept).
 //
 
 import SwiftUI
@@ -166,12 +166,14 @@ struct SplashView: View {
 // MARK: - App shell (swap root here when removing splash)
 
 struct ScanningerRootView: View {
-    @AppStorage(PaywallAppStorageKeys.hasPassedPaywall) private var hasPassedPaywall = false
+    @AppStorage(AppFlowStorageKeys.hasSeenOnboarding) private var hasSeenOnboarding = false
+    @AppStorage(AppFlowStorageKeys.isSignedIn) private var isSignedIn = false
+    @AppStorage(AppFlowStorageKeys.hasUnlockedAppMock) private var hasUnlockedAppMock = false
+
     @State private var showSplash = true
 
-    /// Main tabs are visible only after splash ends and the user has completed the draft paywall (or skipped via persisted flag).
     private var showMainApp: Bool {
-        !showSplash && hasPassedPaywall
+        !showSplash && hasSeenOnboarding && isSignedIn && hasUnlockedAppMock
     }
 
     var body: some View {
@@ -180,14 +182,35 @@ struct ScanningerRootView: View {
                 .opacity(showMainApp ? 1 : 0)
                 .allowsHitTesting(showMainApp)
 
-            if !showSplash && !hasPassedPaywall {
-                WelcomePaywallView {
+            if !showSplash && !hasSeenOnboarding {
+                OnboardingView {
                     withAnimation(.easeOut(duration: 0.28)) {
-                        hasPassedPaywall = true
+                        hasSeenOnboarding = true
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                 .zIndex(1)
+            }
+
+            if !showSplash && hasSeenOnboarding && !isSignedIn {
+                SignInView {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        isSignedIn = true
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .zIndex(2)
+            }
+
+            if !showSplash && hasSeenOnboarding && isSignedIn && !hasUnlockedAppMock {
+                PaywallView {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        hasUnlockedAppMock = true
+                        UserDefaults.standard.set(true, forKey: PaywallAppStorageKeys.hasPassedPaywall)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .zIndex(3)
             }
 
             if showSplash {
@@ -197,10 +220,12 @@ struct ScanningerRootView: View {
                     }
                 }
                 .transition(.opacity)
-                .zIndex(2)
+                .zIndex(4)
             }
         }
         .animation(.easeOut(duration: 0.28), value: showSplash)
-        .animation(.easeOut(duration: 0.28), value: hasPassedPaywall)
+        .animation(.easeOut(duration: 0.28), value: hasSeenOnboarding)
+        .animation(.easeOut(duration: 0.28), value: isSignedIn)
+        .animation(.easeOut(duration: 0.28), value: hasUnlockedAppMock)
     }
 }

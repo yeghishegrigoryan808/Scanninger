@@ -1,21 +1,18 @@
 //
-//  WelcomePaywallView.swift
+//  PaywallView.swift
 //  Scanninger
 //
-//  Full-screen paywall after splash. Real Sign in with Apple; subscription UI still mock.
+//  Subscription plan selection after sign-in (mock unlock). No Sign in with Apple here.
 //
 
-import AuthenticationServices
 import SwiftUI
 
-struct WelcomePaywallView: View {
-    @StateObject private var viewModel = WelcomePaywallViewModel()
+struct PaywallView: View {
+    @StateObject private var viewModel = PaywallViewModel()
     let onComplete: () -> Void
 
     @State private var showPrivacy = false
     @State private var showTerms = false
-    @State private var showSignInError = false
-    @State private var signInErrorMessage = ""
 
     private var appTitle: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
@@ -25,7 +22,15 @@ struct WelcomePaywallView: View {
 
     var body: some View {
         ZStack {
-            background
+            LinearGradient(
+                colors: [
+                    Color(.systemBackground),
+                    Color(.secondarySystemBackground).opacity(0.92)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -38,7 +43,7 @@ struct WelcomePaywallView: View {
                     footnotes
                         .padding(.top, 16)
 
-                    primaryButtons
+                    unlockButton
                         .padding(.top, 28)
 
                     legalRow
@@ -71,36 +76,22 @@ struct WelcomePaywallView: View {
                     }
             }
         }
-        .alert("Sign In Failed", isPresented: $showSignInError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(signInErrorMessage)
-        }
-    }
-
-    private var background: some View {
-        LinearGradient(
-            colors: [
-                Color(.systemBackground),
-                Color(.secondarySystemBackground).opacity(0.92)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
     }
 
     private var header: some View {
         VStack(spacing: 10) {
             Text(appTitle)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
 
-            Text("Create professional invoices in minutes")
-                .font(.subheadline)
+            Text("Choose your plan")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Text("Mock pricing for now — real billing when StoreKit is connected.")
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 8)
         }
         .frame(maxWidth: .infinity)
     }
@@ -177,65 +168,22 @@ struct WelcomePaywallView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var primaryButtons: some View {
-        VStack(spacing: 14) {
-            continueWithAppleButton
-            unlockButton
-        }
-    }
-
-    private var continueWithAppleButton: some View {
-        SignInWithAppleButton(.signIn) { request in
-            request.requestedScopes = [.fullName, .email]
-        } onCompletion: { result in
-            Task { @MainActor in
-                switch result {
-                case .success(let authorization):
-                    guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-                        signInErrorMessage = "Unexpected credential type."
-                        showSignInError = true
-                        return
-                    }
-                    AppleSignInSessionManager.shared.saveFromAppleCredential(credential)
-                    viewModel.continueWithApple()
-                    onComplete()
-                case .failure(let error):
-                    if let authError = error as? ASAuthorizationError, authError.code == .canceled {
-                        return
-                    }
-                    signInErrorMessage = error.localizedDescription
-                    showSignInError = true
-                }
-            }
-        }
-        .signInWithAppleButtonStyle(.black)
-        .frame(height: 50)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityIdentifier("paywall.continueWithApple")
-    }
-
     private var unlockButton: some View {
         Button {
-            viewModel.continueUnlockPremium()
             onComplete()
         } label: {
-            Text("Unlock Premium")
+            Text("Continue")
                 .font(.headline)
-                .foregroundStyle(Color.blue)
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.blue.opacity(0.12))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.blue.opacity(0.35), lineWidth: 1)
+                        .fill(Color.blue)
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier("paywall.unlockPremium")
+        .accessibilityIdentifier("paywall.continue")
     }
 
     private var legalRow: some View {
@@ -260,5 +208,5 @@ struct WelcomePaywallView: View {
 }
 
 #Preview {
-    WelcomePaywallView(onComplete: {})
+    PaywallView(onComplete: {})
 }

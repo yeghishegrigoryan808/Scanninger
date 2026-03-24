@@ -11,17 +11,19 @@ import Foundation
 // MARK: - UserDefaults (draft)
 
 enum PaywallAppStorageKeys {
-    /// When `true`, the user completed the paywall flow and should not see it again (until reset).
-    /// **This is the only persisted flag that gates `ScanningerRootView` (main app vs paywall).**
+    /// Legacy single gate from older builds; still cleared on logout. New flow uses `AppFlowStorageKeys`.
     static let hasPassedPaywall = "paywall.hasPassedPaywall"
 }
 
-/// Resets draft paywall / local auth persisted state (logout, testing).
+/// Resets sign-in, mock unlock, legacy paywall flag, and local Apple session (logout).
 @MainActor
 enum PaywallReset {
-    /// Sets all draft session flags so the root flow shows the paywall again (after splash); clears local Apple sign-in data.
+    /// Returns user to **Sign-in** (onboarding stays complete). Clears Apple profile on device.
     static func resetDraftSession() {
-        UserDefaults.standard.set(false, forKey: PaywallAppStorageKeys.hasPassedPaywall)
+        let d = UserDefaults.standard
+        d.set(false, forKey: AppFlowStorageKeys.isSignedIn)
+        d.set(false, forKey: AppFlowStorageKeys.hasUnlockedAppMock)
+        d.set(false, forKey: PaywallAppStorageKeys.hasPassedPaywall)
         AppleSignInSessionManager.shared.clearSession()
     }
 
