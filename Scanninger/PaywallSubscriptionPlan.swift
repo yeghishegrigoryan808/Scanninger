@@ -16,11 +16,13 @@ enum PaywallAppStorageKeys {
     static let hasPassedPaywall = "paywall.hasPassedPaywall"
 }
 
-/// Resets draft paywall / mock-auth persisted state (logout, testing).
+/// Resets draft paywall / local auth persisted state (logout, testing).
+@MainActor
 enum PaywallReset {
-    /// Sets all draft session flags so the root flow shows the paywall again (after splash).
+    /// Sets all draft session flags so the root flow shows the paywall again (after splash); clears local Apple sign-in data.
     static func resetDraftSession() {
         UserDefaults.standard.set(false, forKey: PaywallAppStorageKeys.hasPassedPaywall)
+        AppleSignInSessionManager.shared.clearSession()
     }
 
     /// Same as `resetDraftSession()` — kept for call sites that only cleared the pass flag.

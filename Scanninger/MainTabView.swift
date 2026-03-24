@@ -5386,6 +5386,12 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    NavigationLink(destination: MyProfileView()) {
+                        Label("My Profile", systemImage: "person.crop.circle")
+                    }
+                }
+
                 Section("App") {
                     NavigationLink(destination: LanguageSettingsView()) {
                         Label("Language", systemImage: "globe")

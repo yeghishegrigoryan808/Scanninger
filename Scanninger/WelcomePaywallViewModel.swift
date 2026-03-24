@@ -25,7 +25,7 @@ final class WelcomePaywallViewModel: ObservableObject {
         selectedPlan = plan
     }
 
-    /// Call before dismissing when using “Continue with Apple” (stub for future ASAuthorizationController).
+    /// Called after `SignInWithAppleButton` succeeds and `AppleSignInSessionManager` has saved the credential.
     func continueWithApple() {
         isLoggedInMock = true
     }

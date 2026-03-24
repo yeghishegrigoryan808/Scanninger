@@ -2,9 +2,10 @@
 //  WelcomePaywallView.swift
 //  Scanninger
 //
-//  Draft full-screen paywall after splash. Mock only — no StoreKit or Sign in with Apple.
+//  Full-screen paywall after splash. Real Sign in with Apple; subscription UI still mock.
 //
 
+import AuthenticationServices
 import SwiftUI
 
 struct WelcomePaywallView: View {
@@ -13,6 +14,8 @@ struct WelcomePaywallView: View {
 
     @State private var showPrivacy = false
     @State private var showTerms = false
+    @State private var showSignInError = false
+    @State private var signInErrorMessage = ""
 
     private var appTitle: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
@@ -67,6 +70,11 @@ struct WelcomePaywallView: View {
                         }
                     }
             }
+        }
+        .alert("Sign In Failed", isPresented: $showSignInError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(signInErrorMessage)
         }
     }
 
@@ -177,25 +185,33 @@ struct WelcomePaywallView: View {
     }
 
     private var continueWithAppleButton: some View {
-        Button {
-            viewModel.continueWithApple()
-            onComplete()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "applelogo")
-                    .font(.title3.weight(.semibold))
-                Text("Continue with Apple")
-                    .font(.headline)
+        SignInWithAppleButton(.signIn) { request in
+            request.requestedScopes = [.fullName, .email]
+        } onCompletion: { result in
+            Task { @MainActor in
+                switch result {
+                case .success(let authorization):
+                    guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                        signInErrorMessage = "Unexpected credential type."
+                        showSignInError = true
+                        return
+                    }
+                    AppleSignInSessionManager.shared.saveFromAppleCredential(credential)
+                    viewModel.continueWithApple()
+                    onComplete()
+                case .failure(let error):
+                    if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                        return
+                    }
+                    signInErrorMessage = error.localizedDescription
+                    showSignInError = true
+                }
             }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.black)
-            )
         }
-        .buttonStyle(.plain)
+        .signInWithAppleButtonStyle(.black)
+        .frame(height: 50)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityIdentifier("paywall.continueWithApple")
     }
 
