@@ -7,10 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		887D7FBC2F733BCE0074EB24 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 887D7FBB2F733BCE0074EB24 /* StoreKit.framework */; };
 		88B238032F16CB0400BD62CD /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 88B238022F16CB0400BD62CD /* Lottie */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		887D7FBB2F733BCE0074EB24 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		88B237E92F16CB0400BD62CD /* Scanninger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scanninger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -28,16 +30,26 @@
 			buildActionMask = 2147483647;
 			files = (
 				88B238032F16CB0400BD62CD /* Lottie in Frameworks */,
+				887D7FBC2F733BCE0074EB24 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		887D7FBA2F733BCE0074EB24 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				887D7FBB2F733BCE0074EB24 /* StoreKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		88B237E02F16CB0400BD62CD = {
 			isa = PBXGroup;
 			children = (
 				88B237EB2F16CB0400BD62CD /* Scanninger */,
+				887D7FBA2F733BCE0074EB24 /* Frameworks */,
 				88B237EA2F16CB0400BD62CD /* Products */,
 			);
 			sourceTree = "<group>";

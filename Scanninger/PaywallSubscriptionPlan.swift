@@ -8,6 +8,17 @@
 
 import Foundation
 
+// MARK: - StoreKit product identifiers
+
+/// Must match App Store Connect and the local StoreKit Configuration file.
+enum PremiumSubscriptionProductID {
+    static let weekly = "com.yeghishe.scanninger.premium.weekly"
+    static let monthly = "com.yeghishe.scanninger.premium.monthly"
+    static let yearly = "com.yeghishe.scanninger.premium.yearly"
+
+    static let all: Set<String> = [weekly, monthly, yearly]
+}
+
 // MARK: - UserDefaults (draft)
 
 enum PaywallAppStorageKeys {
@@ -15,7 +26,7 @@ enum PaywallAppStorageKeys {
     static let hasPassedPaywall = "paywall.hasPassedPaywall"
 }
 
-/// Resets sign-in, mock unlock, legacy paywall flag, and local Apple session (logout).
+/// Resets sign-in, legacy flags, and local Apple profile (logout). Does **not** remove StoreKit subscriptions.
 @MainActor
 enum PaywallReset {
     /// Returns user to **Sign-in** (onboarding stays complete). Clears Apple profile on device.
@@ -33,7 +44,7 @@ enum PaywallReset {
     }
 }
 
-// MARK: - Plans (mock)
+// MARK: - Plans (UI + StoreKit product ids)
 
 enum SubscriptionPlan: String, CaseIterable, Identifiable {
     case oneWeek
@@ -44,20 +55,32 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .oneWeek: return "1 Week"
-        case .oneMonth: return "1 Month"
-        case .oneYear: return "1 Year"
+        case .oneWeek: return "Weekly"
+        case .oneMonth: return "Monthly"
+        case .oneYear: return "Yearly"
         }
     }
 
-    /// Placeholder prices — swap for localized StoreKit prices later.
-    var priceLine: String {
+    /// StoreKit 2 product identifier (matches App Store Connect & local `.storekit` file).
+    var storeProductId: String {
+        switch self {
+        case .oneWeek: return PremiumSubscriptionProductID.weekly
+        case .oneMonth: return PremiumSubscriptionProductID.monthly
+        case .oneYear: return PremiumSubscriptionProductID.yearly
+        }
+    }
+
+    /// Shown only when `Product` hasn’t loaded yet (offline / misconfigured StoreKit file).
+    var fallbackPriceLine: String {
         switch self {
         case .oneWeek: return "$4.99"
         case .oneMonth: return "$12.99"
         case .oneYear: return "$49.99"
         }
     }
+
+    /// Backward compatibility for previews.
+    var priceLine: String { fallbackPriceLine }
 
     var periodSubtitle: String {
         switch self {

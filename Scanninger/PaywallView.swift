@@ -2,17 +2,19 @@
 //  PaywallView.swift
 //  Scanninger
 //
-//  Subscription plan selection after sign-in (mock unlock). No Sign in with Apple here.
+//  Subscription plans with StoreKit 2 prices, purchase, and restore.
 //
 
 import SwiftUI
 
 struct PaywallView: View {
     @StateObject private var viewModel = PaywallViewModel()
-    let onComplete: () -> Void
+    @ObservedObject private var subscription = SubscriptionManager.shared
 
     @State private var showPrivacy = false
     @State private var showTerms = false
+    @State private var purchaseInProgress = false
+    @State private var purchaseError: String?
 
     private var appTitle: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
@@ -43,7 +45,7 @@ struct PaywallView: View {
                     footnotes
                         .padding(.top, 16)
 
-                    unlockButton
+                    continueButton
                         .padding(.top, 28)
 
                     legalRow
@@ -55,6 +57,10 @@ struct PaywallView: View {
         }
         .onAppear {
             viewModel.recordPaywallSeen()
+        }
+        .task {
+            await subscription.loadProducts()
+            await subscription.refreshEntitlements()
         }
         .sheet(isPresented: $showPrivacy) {
             NavigationStack {
@@ -76,6 +82,14 @@ struct PaywallView: View {
                     }
             }
         }
+        .alert("Purchase", isPresented: Binding(
+            get: { purchaseError != nil },
+            set: { if !$0 { purchaseError = nil } }
+        )) {
+            Button("OK", role: .cancel) { purchaseError = nil }
+        } message: {
+            Text(purchaseError ?? "")
+        }
     }
 
     private var header: some View {
@@ -88,7 +102,7 @@ struct PaywallView: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
 
-            Text("Mock pricing for now — real billing when StoreKit is connected.")
+            Text(subscription.isLoadingProducts ? "Loading prices…" : "Prices from the App Store (StoreKit testing in Xcode).")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -127,7 +141,7 @@ struct PaywallView: View {
                         }
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(plan.priceLine)
+                        Text(subscription.displayPrice(for: plan))
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(.primary)
                         Text(plan.periodSubtitle)
@@ -168,28 +182,53 @@ struct PaywallView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var unlockButton: some View {
+    private var continueButton: some View {
         Button {
-            onComplete()
+            Task {
+                purchaseError = nil
+                purchaseInProgress = true
+                defer { purchaseInProgress = false }
+                do {
+                    try await subscription.purchase(plan: viewModel.selectedPlan)
+                } catch {
+                    if let sub = error as? SubscriptionError, case .userCancelled = sub { return }
+                    purchaseError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
+            }
         } label: {
-            Text("Continue")
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.blue)
-                )
+            ZStack {
+                Text("Continue")
+                    .font(.headline)
+                    .opacity(purchaseInProgress ? 0 : 1)
+                if purchaseInProgress {
+                    ProgressView()
+                        .tint(.white)
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.blue)
+            )
         }
         .buttonStyle(.plain)
+        .disabled(purchaseInProgress)
         .accessibilityIdentifier("paywall.continue")
     }
 
     private var legalRow: some View {
         VStack(spacing: 14) {
             Button("Restore Purchases") {
-                viewModel.restorePurchases()
+                Task {
+                    await viewModel.restorePurchases()
+                    if let msg = subscription.lastErrorMessage {
+                        purchaseError = msg
+                    } else if !subscription.isPremium {
+                        purchaseError = "No active subscription found for this Apple ID."
+                    }
+                }
             }
             .font(.subheadline.weight(.medium))
             .foregroundStyle(.secondary)
@@ -208,5 +247,5 @@ struct PaywallView: View {
 }
 
 #Preview {
-    PaywallView(onComplete: {})
+    PaywallView()
 }

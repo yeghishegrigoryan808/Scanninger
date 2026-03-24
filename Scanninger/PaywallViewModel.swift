@@ -2,7 +2,7 @@
 //  PaywallViewModel.swift
 //  Scanninger
 //
-//  Mock plan selection for PaywallView. Wire StoreKit / RevenueCat later.
+//  Plan selection + restore; purchases go through `SubscriptionManager`.
 //
 
 import Combine
@@ -21,6 +21,7 @@ final class PaywallViewModel: ObservableObject {
         selectedPlan = plan
     }
 
-    /// Stub — hook up StoreKit restore later.
-    func restorePurchases() {}
+    func restorePurchases() async {
+        await SubscriptionManager.shared.restorePurchases()
+    }
 }

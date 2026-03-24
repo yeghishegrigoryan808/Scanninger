@@ -7,8 +7,8 @@
 //  2. In ScanningerApp.swift, use MainTabView() directly again
 //  3. Remove the Lottie package (Project → Package Dependencies)
 //
-//  Flow: Splash → Onboarding → SignInView → PaywallView → MainTabView.
-//  Logout: `PaywallReset.resetDraftSession()` (sign-in + unlock cleared; onboarding kept).
+//  Flow: Splash → Onboarding → SignInView → PaywallView (StoreKit) → MainTabView when `SubscriptionManager.isPremium`.
+//  Logout: `PaywallReset.resetDraftSession()` (sign-in cleared; StoreKit entitlements remain on the Apple ID).
 //
 
 import SwiftUI
@@ -168,12 +168,13 @@ struct SplashView: View {
 struct ScanningerRootView: View {
     @AppStorage(AppFlowStorageKeys.hasSeenOnboarding) private var hasSeenOnboarding = false
     @AppStorage(AppFlowStorageKeys.isSignedIn) private var isSignedIn = false
-    @AppStorage(AppFlowStorageKeys.hasUnlockedAppMock) private var hasUnlockedAppMock = false
+
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
 
     @State private var showSplash = true
 
     private var showMainApp: Bool {
-        !showSplash && hasSeenOnboarding && isSignedIn && hasUnlockedAppMock
+        !showSplash && hasSeenOnboarding && isSignedIn && subscriptionManager.isPremium
     }
 
     var body: some View {
@@ -202,15 +203,10 @@ struct ScanningerRootView: View {
                 .zIndex(2)
             }
 
-            if !showSplash && hasSeenOnboarding && isSignedIn && !hasUnlockedAppMock {
-                PaywallView {
-                    withAnimation(.easeOut(duration: 0.28)) {
-                        hasUnlockedAppMock = true
-                        UserDefaults.standard.set(true, forKey: PaywallAppStorageKeys.hasPassedPaywall)
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .zIndex(3)
+            if !showSplash && hasSeenOnboarding && isSignedIn && !subscriptionManager.isPremium {
+                PaywallView()
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .zIndex(3)
             }
 
             if showSplash {
@@ -226,6 +222,9 @@ struct ScanningerRootView: View {
         .animation(.easeOut(duration: 0.28), value: showSplash)
         .animation(.easeOut(duration: 0.28), value: hasSeenOnboarding)
         .animation(.easeOut(duration: 0.28), value: isSignedIn)
-        .animation(.easeOut(duration: 0.28), value: hasUnlockedAppMock)
+        .animation(.easeOut(duration: 0.28), value: subscriptionManager.isPremium)
+        .task {
+            await subscriptionManager.refreshEntitlements()
+        }
     }
 }

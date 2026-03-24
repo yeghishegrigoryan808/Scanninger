@@ -2,23 +2,18 @@
 //  MyProfileView.swift
 //  Scanninger
 //
-//  Profile: local Apple sign-in data when available; subscription section remains mock until StoreKit.
+//  Profile: local Apple sign-in data; subscription from StoreKit 2 / `SubscriptionManager`.
 //
 
 import SwiftUI
 
 struct MyProfileView: View {
     @ObservedObject private var appleSession = AppleSignInSessionManager.shared
+    @ObservedObject private var subscription = SubscriptionManager.shared
     @State private var showLogoutAlert = false
     @State private var showManagePlaceholder = false
-    @State private var showRestorePlaceholder = false
-
-    /// Mock subscription — unchanged until StoreKit / RevenueCat.
-    private let subscriptionMock = SubscriptionSnapshot(
-        currentPlan: "1 Year Plan",
-        status: "Inactive",
-        subscriptionEndDate: "April 30, 2026"
-    )
+    @State private var showRestoreAlert = false
+    @State private var restoreMessage = ""
 
     var body: some View {
         let profile = appleSession.userProfileSnapshot()
@@ -33,16 +28,16 @@ struct MyProfileView: View {
 
             Section {
                 LabeledContent("Current Plan") {
-                    Text(subscriptionMock.currentPlan)
+                    Text(subscription.friendlyPlanName())
                         .foregroundStyle(.primary)
                 }
 
                 LabeledContent("Status") {
-                    subscriptionStatusBadge(subscriptionMock.status)
+                    subscriptionStatusBadge(subscription.subscriptionStatusLabel())
                 }
 
                 LabeledContent("Subscription End Date") {
-                    Text(subscriptionMock.subscriptionEndDate)
+                    Text(subscription.subscriptionExpirationFormatted())
                         .foregroundStyle(.secondary)
                 }
             } header: {
@@ -57,7 +52,17 @@ struct MyProfileView: View {
                 }
 
                 Button {
-                    showRestorePlaceholder = true
+                    Task {
+                        await subscription.restorePurchases()
+                        if subscription.isPremium {
+                            restoreMessage = "Subscription restored."
+                        } else if let err = subscription.lastErrorMessage {
+                            restoreMessage = err
+                        } else {
+                            restoreMessage = "No active subscription found for this Apple ID."
+                        }
+                        showRestoreAlert = true
+                    }
                 } label: {
                     Label("Restore Purchases", systemImage: "arrow.clockwise.circle")
                 }
@@ -80,17 +85,17 @@ struct MyProfileView: View {
                 PaywallReset.resetDraftSession()
             }
         } message: {
-            Text("You’ll return to the welcome screen. Local Apple sign-in data will be cleared.")
+            Text("You’ll return to the welcome screen. Local Apple sign-in data will be cleared. StoreKit subscriptions stay on your Apple ID.")
         }
         .alert("Manage Subscription", isPresented: $showManagePlaceholder) {
             Button("OK", role: .cancel) { }
         } message: {
             Text("Subscription management will open App Store / your billing provider here.")
         }
-        .alert("Restore Purchases", isPresented: $showRestorePlaceholder) {
+        .alert("Restore Purchases", isPresented: $showRestoreAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Restore will verify past purchases with the App Store when implemented.")
+            Text(restoreMessage)
         }
     }
 
@@ -108,9 +113,9 @@ struct MyProfileView: View {
     private func subscriptionStatusBadge(_ status: String) -> some View {
         let normalized = status.lowercased()
         let tint: Color = {
-            if normalized.contains("active") { return .green }
+            if normalized == "active" { return .green }
             if normalized.contains("trial") { return .blue }
-            if normalized.contains("inactive") || normalized.contains("expired") { return .orange }
+            if normalized == "inactive" || normalized.contains("expired") { return .orange }
             return .secondary
         }()
 

@@ -71,6 +71,7 @@ struct SignInView: View {
                                 return
                             }
                             AppleSignInSessionManager.shared.saveFromAppleCredential(credential)
+                            await SubscriptionManager.shared.refreshEntitlements()
                             onSignedIn()
                         case .failure(let error):
                             if let authError = error as? ASAuthorizationError, authError.code == .canceled {
@@ -88,7 +89,7 @@ struct SignInView: View {
                 .padding(.horizontal, 22)
                 .accessibilityIdentifier("signIn.apple")
 
-                Text("We’ll ask you to pick a plan on the next screen. Purchases are mock for now.")
+                Text("Next you’ll choose a subscription. Use Xcode StoreKit testing for local purchases.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
