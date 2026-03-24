@@ -55,9 +55,6 @@ struct PaywallView: View {
                 .padding(.horizontal, 22)
             }
         }
-        .onAppear {
-            viewModel.recordPaywallSeen()
-        }
         .task {
             await subscription.loadProducts()
             await subscription.refreshEntitlements()
@@ -102,7 +99,7 @@ struct PaywallView: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
 
-            Text(subscription.isLoadingProducts ? "Loading prices…" : "Prices from the App Store (StoreKit testing in Xcode).")
+            Text(subscription.isLoadingProducts ? "Loading prices…" : "Prices from the App Store.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

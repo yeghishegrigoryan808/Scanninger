@@ -2,8 +2,8 @@
 //  AppleSignInSessionManager.swift
 //  Scanninger
 //
-//  Persists Sign in with Apple identity locally (UserDefaults JSON).
-//  Later: map `userIdentifier` + tokens to Firebase; keep merge rules for name/email.
+//  Persists Sign in with Apple identity locally (UserDefaults). Merge rules: never overwrite
+//  stored name/email with empty values when Apple omits them on later sign-ins (relay email preserved).
 //
 
 import AuthenticationServices
@@ -73,11 +73,6 @@ final class AppleSignInSessionManager: ObservableObject {
 
         account = next
         persist()
-    }
-
-    func clearSession() {
-        account = nil
-        defaults.removeObject(forKey: defaultsKey)
     }
 
     func userProfileSnapshot() -> UserProfileSnapshot {

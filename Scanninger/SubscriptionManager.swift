@@ -4,9 +4,6 @@
 //
 //  StoreKit 2 subscription state, purchases, and restore.
 //
-//  **Local testing:** add `Scanninger/StoreKitConfiguration.storekit` to the Run scheme:
-//  Xcode → Product → Scheme → Edit Scheme → Run → Options → StoreKit Configuration → choose this file.
-//
 
 import Combine
 import Foundation
@@ -43,7 +40,7 @@ final class SubscriptionManager: ObservableObject {
     /// Active premium product id from entitlements (if any).
     @Published private(set) var activeProductIdentifier: String?
 
-    /// Latest known expiration for the active premium subscription (StoreKit testing / renewal).
+    /// Latest known expiration for the active premium subscription.
     @Published private(set) var premiumExpirationDate: Date?
 
     @Published private(set) var productsById: [String: Product] = [:]
@@ -59,7 +56,17 @@ final class SubscriptionManager: ObservableObject {
                 await self?.process(transactionResult: update)
             }
         }
-        Task { await refreshEntitlements() }
+    }
+
+    /// Reconciles with the App Store then reads `Transaction.currentEntitlements`. **Call on cold launch** (and after reinstall) so subscriptions are restored without tapping Restore.
+    /// Premium access is **only** derived from StoreKit — no UserDefaults.
+    func synchronizeEntitlementsOnLaunch() async {
+        do {
+            try await AppStore.sync()
+        } catch {
+            // Still read whatever entitlements exist locally / from prior sync.
+        }
+        await refreshEntitlements()
     }
 
     // MARK: Products
@@ -77,14 +84,14 @@ final class SubscriptionManager: ObservableObject {
             }
             productsById = map
             if products.isEmpty {
-                lastErrorMessage = "No products returned. Attach a StoreKit Configuration in the Run scheme (see SubscriptionManager header)."
+                lastErrorMessage = "Subscriptions are unavailable right now. Check your connection and try again."
             }
         } catch {
             lastErrorMessage = error.localizedDescription
         }
     }
 
-    /// Display price for UI; falls back to placeholder if product not loaded.
+    /// Display price for UI; falls back to `SubscriptionPlan.fallbackPriceLine` if the product is not loaded.
     func displayPrice(for plan: SubscriptionPlan) -> String {
         let id = plan.storeProductId
         if let product = productsById[id] {
@@ -153,6 +160,7 @@ final class SubscriptionManager: ObservableObject {
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
             guard PremiumSubscriptionProductID.all.contains(transaction.productID) else { continue }
+            if transaction.revocationDate != nil { continue }
 
             foundPremium = true
 

@@ -12,6 +12,10 @@ import SwiftData
 struct ScanningerApp: App {
     init() {
         AppFlowBootstrap.migrateFromLegacyIfNeeded()
+        // Premium access: `AppStore.sync()` + `Transaction.currentEntitlements` (not UserDefaults).
+        Task { @MainActor in
+            await SubscriptionManager.shared.synchronizeEntitlementsOnLaunch()
+        }
     }
 
     var body: some Scene {

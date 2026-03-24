@@ -11,10 +11,8 @@ import Foundation
 
 enum AppFlowStorageKeys {
     static let hasSeenOnboarding = "flow.hasSeenOnboarding"
-    /// Set after successful Sign in with Apple (local session).
+    /// Set after successful Sign in with Apple (session flag; profile data lives in `AppleSignInSessionManager`).
     static let isSignedIn = "flow.isSignedIn"
-    /// Mock “unlocked” after paywall Continue — replace with real entitlement when using IAP.
-    static let hasUnlockedAppMock = "flow.hasUnlockedAppMock"
 }
 
 // MARK: - One-time migration from older single-flag paywall gate
@@ -29,10 +27,11 @@ enum AppFlowBootstrap {
         guard !d.bool(forKey: didMigrateKey) else { return }
         d.set(true, forKey: didMigrateKey)
 
+        d.removeObject(forKey: "flow.hasUnlockedAppMock")
+
         guard d.bool(forKey: PaywallAppStorageKeys.hasPassedPaywall) else { return }
 
         d.set(true, forKey: AppFlowStorageKeys.hasSeenOnboarding)
         d.set(true, forKey: AppFlowStorageKeys.isSignedIn)
-        d.set(true, forKey: AppFlowStorageKeys.hasUnlockedAppMock)
     }
 }

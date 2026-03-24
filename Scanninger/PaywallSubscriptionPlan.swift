@@ -2,8 +2,7 @@
 //  PaywallSubscriptionPlan.swift
 //  Scanninger
 //
-//  Subscription plan model + UserDefaults keys for the draft paywall.
-//  Replace mock pricing with StoreKit / RevenueCat when integrating purchases.
+//  Subscription plan model + legacy UserDefaults keys for migration.
 //
 
 import Foundation
@@ -19,28 +18,20 @@ enum PremiumSubscriptionProductID {
     static let all: Set<String> = [weekly, monthly, yearly]
 }
 
-// MARK: - UserDefaults (draft)
+// MARK: - UserDefaults (legacy migration)
 
 enum PaywallAppStorageKeys {
     /// Legacy single gate from older builds; still cleared on logout. New flow uses `AppFlowStorageKeys`.
     static let hasPassedPaywall = "paywall.hasPassedPaywall"
 }
 
-/// Resets sign-in, legacy flags, and local Apple profile (logout). Does **not** remove StoreKit subscriptions.
+/// Clears the signed-in session flag so the user returns to sign-in. **Preserves** saved Apple profile (name, email, user id). StoreKit entitlements stay on the Apple ID.
 @MainActor
 enum PaywallReset {
-    /// Returns user to **Sign-in** (onboarding stays complete). Clears Apple profile on device.
-    static func resetDraftSession() {
+    static func logout() {
         let d = UserDefaults.standard
         d.set(false, forKey: AppFlowStorageKeys.isSignedIn)
-        d.set(false, forKey: AppFlowStorageKeys.hasUnlockedAppMock)
         d.set(false, forKey: PaywallAppStorageKeys.hasPassedPaywall)
-        AppleSignInSessionManager.shared.clearSession()
-    }
-
-    /// Same as `resetDraftSession()` — kept for call sites that only cleared the pass flag.
-    static func clearPassedPaywallFlag() {
-        resetDraftSession()
     }
 }
 
@@ -70,7 +61,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Shown only when `Product` hasn’t loaded yet (offline / misconfigured StoreKit file).
+    /// Shown only when `Product` hasn’t loaded yet (offline).
     var fallbackPriceLine: String {
         switch self {
         case .oneWeek: return "$4.99"
@@ -79,7 +70,6 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Backward compatibility for previews.
     var priceLine: String { fallbackPriceLine }
 
     var periodSubtitle: String {

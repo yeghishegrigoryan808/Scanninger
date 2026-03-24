@@ -50,7 +50,7 @@ struct SignInView: View {
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.primary)
 
-                    Text("Use your Apple ID to save your profile on this device. Subscription choices come next.")
+                    Text("Use your Apple ID to continue. You can choose a subscription next.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -71,7 +71,7 @@ struct SignInView: View {
                                 return
                             }
                             AppleSignInSessionManager.shared.saveFromAppleCredential(credential)
-                            await SubscriptionManager.shared.refreshEntitlements()
+                            await SubscriptionManager.shared.synchronizeEntitlementsOnLaunch()
                             onSignedIn()
                         case .failure(let error):
                             if let authError = error as? ASAuthorizationError, authError.code == .canceled {
@@ -88,12 +88,6 @@ struct SignInView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.horizontal, 22)
                 .accessibilityIdentifier("signIn.apple")
-
-                Text("Next you’ll choose a subscription. Use Xcode StoreKit testing for local purchases.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 36)
 
                 Spacer(minLength: 48)
             }

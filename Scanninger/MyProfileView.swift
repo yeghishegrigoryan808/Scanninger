@@ -2,16 +2,17 @@
 //  MyProfileView.swift
 //  Scanninger
 //
-//  Profile: local Apple sign-in data; subscription from StoreKit 2 / `SubscriptionManager`.
+//  Profile: Apple sign-in data from `AppleSignInSessionManager`; subscription from StoreKit 2 / `SubscriptionManager`.
 //
 
+import StoreKit
 import SwiftUI
+import UIKit
 
 struct MyProfileView: View {
     @ObservedObject private var appleSession = AppleSignInSessionManager.shared
     @ObservedObject private var subscription = SubscriptionManager.shared
     @State private var showLogoutAlert = false
-    @State private var showManagePlaceholder = false
     @State private var showRestoreAlert = false
     @State private var restoreMessage = ""
 
@@ -46,7 +47,9 @@ struct MyProfileView: View {
 
             Section {
                 Button {
-                    showManagePlaceholder = true
+                    Task {
+                        await openManageSubscriptions()
+                    }
                 } label: {
                     Label("Manage Subscription", systemImage: "creditcard")
                 }
@@ -82,15 +85,10 @@ struct MyProfileView: View {
         .alert("Log out", isPresented: $showLogoutAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Log out", role: .destructive) {
-                PaywallReset.resetDraftSession()
+                PaywallReset.logout()
             }
         } message: {
-            Text("You’ll return to the welcome screen. Local Apple sign-in data will be cleared. StoreKit subscriptions stay on your Apple ID.")
-        }
-        .alert("Manage Subscription", isPresented: $showManagePlaceholder) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Subscription management will open App Store / your billing provider here.")
+            Text("You’ll return to sign in. Your name and email stay on this device for next time. Subscriptions remain tied to your Apple ID.")
         }
         .alert("Restore Purchases", isPresented: $showRestoreAlert) {
             Button("OK", role: .cancel) { }
@@ -125,6 +123,22 @@ struct MyProfileView: View {
             .padding(.vertical, 5)
             .background(Capsule().fill(tint.opacity(0.18)))
             .foregroundStyle(tint)
+    }
+
+    @MainActor
+    private func openManageSubscriptions() async {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
+        else { return }
+        do {
+            try await AppStore.showManageSubscriptions(in: scene)
+        } catch {
+            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            }
+        }
     }
 }
 

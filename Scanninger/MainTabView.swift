@@ -5432,10 +5432,10 @@ struct ProfileView: View {
             .alert("Log out", isPresented: $showLogoutAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Log out", role: .destructive) {
-                    PaywallReset.resetDraftSession()
+                    PaywallReset.logout()
                 }
             } message: {
-                Text("You’ll return to the welcome screen. (Draft mock flow — no real sign-out yet.)")
+                Text("You’ll return to sign in. Your saved Apple profile stays on this device.")
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 4) {

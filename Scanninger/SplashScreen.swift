@@ -7,8 +7,8 @@
 //  2. In ScanningerApp.swift, use MainTabView() directly again
 //  3. Remove the Lottie package (Project → Package Dependencies)
 //
-//  Flow: Splash → Onboarding → SignInView → PaywallView (StoreKit) → MainTabView when `SubscriptionManager.isPremium`.
-//  Logout: `PaywallReset.resetDraftSession()` (sign-in cleared; StoreKit entitlements remain on the Apple ID).
+//  Flow: Splash → Onboarding → SignInView → PaywallView → MainTabView when `hasActiveSubscription` (StoreKit entitlements).
+//  Logout: `PaywallReset.logout()` clears `isSignedIn` only; saved Apple profile preserved; subscription state from StoreKit.
 //
 
 import SwiftUI
@@ -173,8 +173,11 @@ struct ScanningerRootView: View {
 
     @State private var showSplash = true
 
+    /// Premium access per StoreKit 2 `Transaction.currentEntitlements` (see `SubscriptionManager.synchronizeEntitlementsOnLaunch()` in `ScanningerApp`).
+    private var hasActiveSubscription: Bool { subscriptionManager.isPremium }
+
     private var showMainApp: Bool {
-        !showSplash && hasSeenOnboarding && isSignedIn && subscriptionManager.isPremium
+        !showSplash && hasSeenOnboarding && isSignedIn && hasActiveSubscription
     }
 
     var body: some View {
@@ -203,7 +206,7 @@ struct ScanningerRootView: View {
                 .zIndex(2)
             }
 
-            if !showSplash && hasSeenOnboarding && isSignedIn && !subscriptionManager.isPremium {
+            if !showSplash && hasSeenOnboarding && isSignedIn && !hasActiveSubscription {
                 PaywallView()
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .zIndex(3)
@@ -222,9 +225,6 @@ struct ScanningerRootView: View {
         .animation(.easeOut(duration: 0.28), value: showSplash)
         .animation(.easeOut(duration: 0.28), value: hasSeenOnboarding)
         .animation(.easeOut(duration: 0.28), value: isSignedIn)
-        .animation(.easeOut(duration: 0.28), value: subscriptionManager.isPremium)
-        .task {
-            await subscriptionManager.refreshEntitlements()
-        }
+        .animation(.easeOut(duration: 0.28), value: hasActiveSubscription)
     }
 }
