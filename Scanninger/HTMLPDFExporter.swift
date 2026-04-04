@@ -7,6 +7,7 @@
 
 import Foundation
 import WebKit
+import PDFKit
 
 // MARK: - HTML PDF Exporter
 class HTMLPDFExporter: NSObject {

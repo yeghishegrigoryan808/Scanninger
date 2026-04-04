@@ -1,0 +1,13 @@
+# Xcode
+DerivedData/
+.derivedData/
+
+# User-specific files
+xcuserdata/
+*.xcuserstate
+
+# Build files
+build/
+
+# Swift Package Manager
+SourcePackages/
