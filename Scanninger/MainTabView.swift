@@ -74,6 +74,38 @@ private struct EmptyStateView: View {
     }
 }
 
+// MARK: - Floating add (FAB)
+
+private struct FloatingAddButton: View {
+    let action: () -> Void
+    @State private var appeared = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(Circle().fill(Color.blue))
+                .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(FloatingAddButtonPressStyle())
+        .scaleEffect(appeared ? 1 : 0.88)
+        .opacity(appeared ? 1 : 0)
+        .animation(.easeOut(duration: 0.28), value: appeared)
+        .onAppear { appeared = true }
+        .accessibilityIdentifier("fab.add")
+    }
+}
+
+private struct FloatingAddButtonPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Invoice Status Enum
 enum InvoiceStatus: String, CaseIterable {
     case draft = "Draft"
@@ -529,6 +561,7 @@ struct InvoicesView: View {
     
     var body: some View {
         NavigationStack {
+            ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
                 // Search bar
                 SearchBar(text: $searchText, placeholder: "Search invoices...")
@@ -660,6 +693,15 @@ struct InvoicesView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.25), value: filteredInvoices.isEmpty)
+
+            if !isSelectionMode {
+                FloatingAddButton {
+                    showCreateInvoice = true
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 12)
+            }
+            }
             .navigationTitle("Invoices")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -4300,6 +4342,7 @@ struct ClientsView: View {
     
     var body: some View {
         NavigationStack {
+            ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
                 // Search bar
                 SearchBar(text: $searchText, placeholder: "Search clients...")
@@ -4393,6 +4436,15 @@ struct ClientsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.25), value: filteredClients.isEmpty)
+
+            if !isSelectionMode {
+                FloatingAddButton {
+                    showCreateClient = true
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 12)
+            }
+            }
             .navigationTitle("Clients")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -5528,6 +5580,7 @@ struct BusinessProfilesView: View {
     
     var body: some View {
         NavigationStack {
+            ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
                 // Search bar
                 SearchBar(text: $searchText, placeholder: "Search businesses...")
@@ -5621,6 +5674,15 @@ struct BusinessProfilesView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.25), value: filteredBusinessProfiles.isEmpty)
+
+            if !isSelectionMode {
+                FloatingAddButton {
+                    showCreateBusinessProfile = true
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 12)
+            }
+            }
             .navigationTitle("My Business")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
