@@ -44,6 +44,9 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Paywall card stack order: Yearly → Monthly → Weekly (matches marketing layout).
+    static var paywallDisplayOrder: [SubscriptionPlan] { [.oneYear, .oneMonth, .oneWeek] }
+
     var title: String {
         switch self {
         case .oneWeek: return "Weekly"
@@ -77,6 +80,15 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
         case .oneWeek: return "per week"
         case .oneMonth: return "per month"
         case .oneYear: return "per year"
+        }
+    }
+
+    /// Secondary line under the plan title on the paywall.
+    var paywallMarketingSubtitle: String {
+        switch self {
+        case .oneYear: return "Best value for your business"
+        case .oneMonth: return "Flexible monthly billing"
+        case .oneWeek: return "Try it for a week"
         }
     }
 

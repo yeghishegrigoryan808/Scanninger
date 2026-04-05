@@ -8,6 +8,159 @@
 import StoreKit
 import SwiftUI
 
+// MARK: - Theme (paywall-only)
+
+private enum PaywallTheme {
+    static let screenBackground = Color(red: 0.96, green: 0.97, blue: 0.98)
+    static let titleNavy = Color(red: 0.07, green: 0.10, blue: 0.16)
+    static let subtitleGray = Color(red: 0.38, green: 0.40, blue: 0.44)
+    static let accentBlue = Color(red: 0.22, green: 0.48, blue: 0.95)
+    static let iconCircleFill = Color(red: 0.88, green: 0.93, blue: 0.99)
+    static let ctaNavy = Color(red: 11 / 255, green: 28 / 255, blue: 52 / 255)
+    static let cardSelectedFill = Color(red: 0.94, green: 0.97, blue: 1.0)
+    static let cardUnselectedFill = Color.white
+    static let borderUnselected = Color(red: 0.0, green: 0.0, blue: 0.0, opacity: 0.08)
+    static let saveGreen = Color(red: 0.18, green: 0.62, blue: 0.42)
+}
+
+// MARK: - Feature row
+
+private struct PaywallFeatureRow: View {
+    let systemImage: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(PaywallTheme.iconCircleFill)
+                    .frame(width: 46, height: 46)
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(PaywallTheme.accentBlue)
+            }
+            Text(title)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(PaywallTheme.titleNavy)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Plan radio
+
+private struct PaywallPlanRadio: View {
+    let selected: Bool
+
+    var body: some View {
+        Group {
+            if selected {
+                ZStack {
+                    Circle()
+                        .fill(PaywallTheme.accentBlue)
+                        .frame(width: 22, height: 22)
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 8, height: 8)
+                }
+            } else {
+                Circle()
+                    .strokeBorder(Color(red: 0.75, green: 0.77, blue: 0.80), lineWidth: 2)
+                    .frame(width: 22, height: 22)
+            }
+        }
+        .frame(width: 24, height: 24)
+        .accessibilityLabel(selected ? "Selected" : "Not selected")
+    }
+}
+
+// MARK: - Plan card
+
+private struct PaywallPlanCard: View {
+    let plan: SubscriptionPlan
+    let selected: Bool
+    let displayPrice: String
+    let onSelect: () -> Void
+
+    private var isYearly: Bool { plan == .oneYear }
+
+    var body: some View {
+        Button(action: onSelect) {
+            ZStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: isYearly ? 10 : 0)
+
+                    HStack(alignment: .center, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Text(plan.title)
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .foregroundStyle(PaywallTheme.titleNavy)
+                                if isYearly {
+                                    Text("Save 50%")
+                                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(Capsule().fill(PaywallTheme.saveGreen))
+                                }
+                            }
+                            Text(plan.paywallMarketingSubtitle)
+                                .font(.system(size: 13, weight: .regular, design: .default))
+                                .foregroundStyle(PaywallTheme.subtitleGray)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(displayPrice)
+                                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                                    .foregroundStyle(PaywallTheme.titleNavy)
+                                    .minimumScaleFactor(0.85)
+                                    .lineLimit(1)
+                                Text(plan.periodSubtitle)
+                                    .font(.system(size: 12, weight: .regular, design: .default))
+                                    .foregroundStyle(PaywallTheme.subtitleGray)
+                            }
+                            PaywallPlanRadio(selected: selected)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                }
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(selected ? PaywallTheme.cardSelectedFill : PaywallTheme.cardUnselectedFill)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            selected ? PaywallTheme.accentBlue : PaywallTheme.borderUnselected,
+                            lineWidth: selected ? 2 : 1
+                        )
+                )
+
+                if isYearly {
+                    Text("Most Popular")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(PaywallTheme.accentBlue))
+                        .offset(y: -11)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Main view
+
 struct PaywallView: View {
     @StateObject private var viewModel = PaywallViewModel()
     @ObservedObject private var subscription = SubscriptionManager.shared
@@ -16,83 +169,47 @@ struct PaywallView: View {
     @State private var showTerms = false
     @State private var purchaseInProgress = false
     @State private var purchaseError: String?
-    @State private var contentVisible = false
-    @State private var animateHero = false
-    @State private var ctaVisible = false
 
-    private var appTitle: String {
-        (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
-            ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)
-            ?? "Scanninger"
-    }
-
-    private var yearlyMonthlyEquivalentText: String {
-        guard
-            let product = subscription.productsById[PremiumSubscriptionProductID.yearly]
-        else {
-            return "$4.17/mo"
+    private var trialPrimaryLine: String {
+        switch viewModel.selectedPlan {
+        case .oneYear:
+            return "3-day free trial, then billed annually"
+        case .oneMonth:
+            return "3-day free trial, then billed monthly"
+        case .oneWeek:
+            return "3-day free trial, then billed weekly"
         }
-
-        let monthly = (product.price as NSDecimalNumber).doubleValue / 12.0
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.locale = product.priceFormatStyle.locale
-        formatter.currencyCode = product.priceFormatStyle.currencyCode
-        formatter.maximumFractionDigits = 2
-        formatter.minimumFractionDigits = 2
-        return (formatter.string(from: NSNumber(value: monthly)) ?? "$4.17") + "/mo"
     }
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(.systemBackground),
-                    Color(.secondarySystemBackground).opacity(0.82),
-                    Color.blue.opacity(0.04)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            PaywallTheme.screenBackground
+                .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    header
-                        .padding(.top, 24)
-
-                    benefitsSection
-                        .padding(.top, 24)
-
-                    planSection
-                        .padding(.top, 24)
-
-                    footnotes
-                        .padding(.top, 16)
-
-                    continueButton
+                    headerSection
                         .padding(.top, 28)
 
-                    legalRow
+                    featureSection
+                        .padding(.top, 28)
+
+                    planSection
+                        .padding(.top, 28)
+
+                    ctaSection
+                        .padding(.top, 28)
+
+                    footerSection
                         .padding(.top, 20)
-                        .padding(.bottom, 28)
+                        .padding(.bottom, 32)
                 }
                 .padding(.horizontal, 22)
-                .opacity(contentVisible ? 1 : 0)
-                .offset(y: contentVisible ? 0 : 18)
-                .animation(.easeOut(duration: 0.5), value: contentVisible)
             }
         }
         .task {
             await subscription.loadProducts()
             await subscription.refreshEntitlements()
-        }
-        .onAppear {
-            contentVisible = true
-            animateHero = true
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.82).delay(0.18)) {
-                ctaVisible = true
-            }
         }
         .sheet(isPresented: $showPrivacy) {
             NavigationStack {
@@ -124,217 +241,101 @@ struct PaywallView: View {
         }
     }
 
-    private var header: some View {
+    private var headerSection: some View {
         VStack(spacing: 12) {
-            Image(systemName: "sparkles.rectangle.stack.fill")
-                .font(.system(size: 36, weight: .medium))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.blue)
-                .scaleEffect(animateHero ? 1.03 : 0.97)
-                .offset(y: animateHero ? -4 : 4)
-                .animation(
-                    .easeInOut(duration: 2.8).repeatForever(autoreverses: true),
-                    value: animateHero
-                )
-
-            Text(appTitle.uppercased())
-                .font(.caption.weight(.semibold))
-                .kerning(1.2)
-                .foregroundStyle(.secondary)
-
-            Text("Run your business like a pro")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
+            Text("Start creating invoices today")
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .foregroundStyle(PaywallTheme.titleNavy)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Text("Create invoices, manage clients, and export professional PDFs — all in one place.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text("Professional tools to run your business effortlessly")
+                .font(.system(size: 16, weight: .regular, design: .default))
+                .foregroundStyle(PaywallTheme.subtitleGray)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 10)
+                .lineSpacing(3)
+                .padding(.horizontal, 4)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var benefitsSection: some View {
-        VStack(spacing: 10) {
-            benefitRow(icon: "bolt.fill", text: "Create invoices in seconds")
-            benefitRow(icon: "person.2.fill", text: "Keep clients organized")
-            benefitRow(icon: "doc.richtext.fill", text: "Export beautiful PDFs")
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(.secondarySystemBackground).opacity(0.8))
-        )
-    }
-
-    private func benefitRow(icon: String, text: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.blue)
-                .frame(width: 20)
-            Text(text)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
-            Spacer()
+    private var featureSection: some View {
+        VStack(spacing: 4) {
+            PaywallFeatureRow(systemImage: "doc.text.fill", title: "Unlimited invoices")
+            PaywallFeatureRow(systemImage: "cube.fill", title: "Professional templates")
+            PaywallFeatureRow(systemImage: "person.2.fill", title: "Manage clients & items")
+            PaywallFeatureRow(systemImage: "square.and.arrow.down.fill", title: "Export and share PDFs")
         }
     }
 
     private var planSection: some View {
         VStack(spacing: 12) {
-            ForEach(SubscriptionPlan.allCases) { plan in
-                planCard(plan)
-            }
-        }
-    }
-
-    private func planCard(_ plan: SubscriptionPlan) -> some View {
-        let selected = viewModel.selectedPlan == plan
-        let isYearly = plan == .oneYear
-        return Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                viewModel.select(plan)
-            }
-        } label: {
-            HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(plan.title)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        if isYearly {
-                            Text("Best Value")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(Color.blue.gradient))
-                        }
-                    }
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(subscription.displayPrice(for: plan))
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.primary)
-                        Text(plan.periodSubtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if isYearly {
-                        Text("Only \(yearlyMonthlyEquivalentText)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.blue)
-                            .padding(.top, 2)
+            ForEach(SubscriptionPlan.paywallDisplayOrder) { plan in
+                PaywallPlanCard(
+                    plan: plan,
+                    selected: viewModel.selectedPlan == plan,
+                    displayPrice: subscription.displayPrice(for: plan)
+                ) {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        viewModel.select(plan)
                     }
                 }
-                Spacer(minLength: 8)
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(selected ? Color.blue : Color.secondary.opacity(0.45))
             }
-            .padding(isYearly ? 22 : 18)
-            .frame(maxWidth: .infinity, minHeight: isYearly ? 112 : 88, alignment: .center)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        isYearly
-                        ? LinearGradient(
-                            colors: [
-                                Color.blue.opacity(selected ? 0.17 : 0.1),
-                                Color.blue.opacity(selected ? 0.07 : 0.03)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        : LinearGradient(
-                            colors: [
-                                selected ? Color.blue.opacity(0.14) : Color(.secondarySystemGroupedBackground),
-                                selected ? Color.blue.opacity(0.09) : Color(.secondarySystemGroupedBackground)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(
-                        selected || isYearly ? Color.blue.opacity(0.85) : Color.primary.opacity(0.06),
-                        lineWidth: selected || isYearly ? 2 : 1
-                    )
-            )
-            .shadow(
-                color: Color.black.opacity(isYearly ? 0.12 : (selected ? 0.1 : 0.06)),
-                radius: isYearly ? 18 : (selected ? 14 : 6),
-                x: 0,
-                y: isYearly ? 10 : (selected ? 8 : 3)
-            )
-            .scaleEffect(selected ? 1.03 : 1.0)
-            .animation(.spring(response: 0.34, dampingFraction: 0.8), value: selected)
         }
-        .buttonStyle(.plain)
     }
 
-    private var footnotes: some View {
-        VStack(spacing: 6) {
-            Text("Cancel anytime")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Text("Premium unlocks PDF export and advanced invoice design")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
+    private var ctaSection: some View {
+        VStack(spacing: 14) {
+            Button {
+                Task {
+                    purchaseError = nil
+                    purchaseInProgress = true
+                    defer { purchaseInProgress = false }
+                    do {
+                        try await subscription.purchase(plan: viewModel.selectedPlan)
+                    } catch {
+                        if let sub = error as? SubscriptionError, case .userCancelled = sub { return }
+                        purchaseError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                    }
+                }
+            } label: {
+                ZStack {
+                    Text("Start Free Trial")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .opacity(purchaseInProgress ? 0 : 1)
+                    if purchaseInProgress {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 17)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(PaywallTheme.ctaNavy)
+                )
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
+            }
+            .buttonStyle(PremiumPressButtonStyle())
+            .disabled(purchaseInProgress)
+            .accessibilityIdentifier("paywall.continue")
+
+            Text(trialPrimaryLine)
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .foregroundStyle(PaywallTheme.subtitleGray)
+                .multilineTextAlignment(.center)
+
+            Text("Cancel anytime. No commitments.")
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .foregroundStyle(PaywallTheme.subtitleGray)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var continueButton: some View {
-        Button {
-            Task {
-                purchaseError = nil
-                purchaseInProgress = true
-                defer { purchaseInProgress = false }
-                do {
-                    try await subscription.purchase(plan: viewModel.selectedPlan)
-                } catch {
-                    if let sub = error as? SubscriptionError, case .userCancelled = sub { return }
-                    purchaseError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                }
-            }
-        } label: {
-            ZStack {
-                Text("Get Premium")
-                    .font(.headline)
-                    .opacity(purchaseInProgress ? 0 : 1)
-                if purchaseInProgress {
-                    ProgressView()
-                        .tint(.white)
-                }
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.blue)
-            )
-            .shadow(color: Color.blue.opacity(0.3), radius: 12, x: 0, y: 8)
-            .scaleEffect(ctaVisible ? 1 : 0.96)
-            .animation(.spring(response: 0.5, dampingFraction: 0.82), value: ctaVisible)
-        }
-        .buttonStyle(PremiumPressButtonStyle())
-        .disabled(purchaseInProgress)
-        .accessibilityIdentifier("paywall.continue")
-    }
-
-    private var legalRow: some View {
-        VStack(spacing: 14) {
-            Text("Cancel anytime • Secure with Apple")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.secondary)
-
+    private var footerSection: some View {
+        VStack(spacing: 16) {
             Button("Restore Purchases") {
                 Task {
                     await viewModel.restorePurchases()
@@ -345,17 +346,20 @@ struct PaywallView: View {
                     }
                 }
             }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.system(size: 15, weight: .medium, design: .default))
+            .foregroundStyle(PaywallTheme.accentBlue)
 
-            HStack(spacing: 20) {
+            HStack(spacing: 6) {
                 Button("Privacy Policy") { showPrivacy = true }
+                    .font(.system(size: 12, weight: .regular, design: .default))
+                    .foregroundStyle(PaywallTheme.subtitleGray.opacity(0.85))
                 Text("·")
-                    .foregroundStyle(.quaternary)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(PaywallTheme.subtitleGray.opacity(0.55))
                 Button("Terms of Use") { showTerms = true }
+                    .font(.system(size: 12, weight: .regular, design: .default))
+                    .foregroundStyle(PaywallTheme.subtitleGray.opacity(0.85))
             }
-            .font(.caption)
-            .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
     }
