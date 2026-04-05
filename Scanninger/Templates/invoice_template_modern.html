@@ -140,10 +140,27 @@ body{
     color:{{accentColor}};
 }
 
-.footer{
-    margin-top:40px;
-    font-size:13px;
+.notes-section{
+    margin-top:24px;
+    padding-top:12px;
+    page-break-inside:avoid;
+    break-inside:avoid;
+}
+
+.notes-title{
+    font-size:12px;
+    font-weight:600;
     color:#666;
+    margin-bottom:6px;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+}
+
+.notes-text{
+    font-size:13px;
+    color:#222;
+    line-height:1.5;
+    white-space:pre-wrap;
 }
 
 </style>
@@ -239,12 +256,7 @@ invoice
 
 </div>
 
-
-<div class="footer">
-
-<div>{{notes}}</div>
-
-</div>
+{{additionalNotesSection}}
 
 </div>
 

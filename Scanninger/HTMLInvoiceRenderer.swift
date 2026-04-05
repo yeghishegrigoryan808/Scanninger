@@ -183,14 +183,14 @@ struct HTMLInvoiceRenderer {
         // Payment info block (empty - no payment info field)
         let paymentInfoBlock = ""
         
-        // Notes block (empty - no notes field in current model)
-        let notesBlock = ""
+        let additionalNotesSection = buildAdditionalNotesSection(invoice: invoice)
         
         // Replace block-style placeholders (for elegant template)
         html = html.replacingOccurrences(of: "{{fromAddressBlock}}", with: fromAddressBlockCombined)
         html = html.replacingOccurrences(of: "{{billToAddressBlock}}", with: billToAddressBlockCombined)
         html = html.replacingOccurrences(of: "{{paymentInfoBlock}}", with: paymentInfoBlock)
-        html = html.replacingOccurrences(of: "{{notesBlock}}", with: notesBlock)
+        html = html.replacingOccurrences(of: "{{notesBlock}}", with: "")
+        html = html.replacingOccurrences(of: "{{additionalNotesSection}}", with: additionalNotesSection)
         html = html.replacingOccurrences(of: "{{taxBlock}}", with: taxBlock)
         html = html.replacingOccurrences(of: "{{discountBlock}}", with: discountBlock)
         
@@ -200,9 +200,7 @@ struct HTMLInvoiceRenderer {
         html = html.replacingOccurrences(of: "{{discount}}", with: escapeHTML(formattedDiscount))
         html = html.replacingOccurrences(of: "{{total}}", with: escapeHTML(formattedTotal))
         
-        // Notes (empty if not available) - backward compatibility
-        let notes = "" // No notes field in current model
-        html = html.replacingOccurrences(of: "{{notes}}", with: escapeHTML(notes))
+        html = html.replacingOccurrences(of: "{{notes}}", with: "")
         
         // Verify all placeholders were replaced
         if html.contains("{{") {
@@ -212,6 +210,19 @@ struct HTMLInvoiceRenderer {
         
         print("✅ HTML rendered successfully, final length: \(html.count) characters")
         return html
+    }
+    
+    /// Renders optional additional notes after totals; empty string when `additionalNotes` is blank.
+    private static func buildAdditionalNotesSection(invoice: InvoiceModel) -> String {
+        let trimmed = invoice.additionalNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let escaped = escapeHTML(trimmed)
+        return """
+        <div class="notes-section">
+            <div class="notes-title">Additional Notes</div>
+            <div class="notes-text">\(escaped)</div>
+        </div>
+        """
     }
     
     /// Builds the HTML rows for invoice items (template-specific format)

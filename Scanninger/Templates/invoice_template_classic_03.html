@@ -245,6 +245,29 @@
     background: linear-gradient(90deg, rgba(0,0,0,0.01), rgba(0,0,0,0));
   }
 
+  .notes-section {
+    margin-top: 24px;
+    padding-top: 12px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .notes-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .notes-text {
+    font-size: 13px;
+    color: #222;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+
   .subtle-accent {
     position: absolute;
     top: 0;
@@ -326,7 +349,6 @@
       <div class="bottom-grid">
         <div class="notes-area">
           {{paymentInfoBlock}}
-          {{notesBlock}}
         </div>
 
         <div>
@@ -349,6 +371,8 @@
           </table>
         </div>
       </div>
+
+      {{additionalNotesSection}}
 
     </div>
   </div>
