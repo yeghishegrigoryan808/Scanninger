@@ -44,6 +44,36 @@ struct MainTabView: View {
     }
 }
 
+// MARK: - Shared empty state
+
+/// Consistent icon + title + subtitle for list tabs (Invoices, Clients, My Business, Reports).
+private struct EmptyStateView: View {
+    let icon: String
+    let title: String
+    var subtitle: String?
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 40, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.secondary.opacity(0.9))
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+    }
+}
+
 // MARK: - Invoice Status Enum
 enum InvoiceStatus: String, CaseIterable {
     case draft = "Draft"
@@ -538,13 +568,15 @@ struct InvoicesView: View {
                 
                 // Invoices list
                 if filteredInvoices.isEmpty {
-                    VStack(spacing: 8) {
-                        Text("No invoices yet")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                        Text("Tap + to add one")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                    Group {
+                        Spacer(minLength: 0)
+                        EmptyStateView(
+                            icon: "doc.text",
+                            title: "No invoices yet",
+                            subtitle: "Tap + to add one"
+                        )
+                        .transition(.opacity)
+                        Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(
@@ -626,6 +658,8 @@ struct InvoicesView: View {
                     )
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.25), value: filteredInvoices.isEmpty)
             .navigationTitle("Invoices")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -4274,15 +4308,15 @@ struct ClientsView: View {
                 
                 // Clients list
                 if filteredClients.isEmpty {
-                    VStack(spacing: 8) {
-                        Text(searchText.isEmpty ? "No clients yet" : "No results")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                        if searchText.isEmpty {
-                            Text("Tap + to add one")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+                    Group {
+                        Spacer(minLength: 0)
+                        EmptyStateView(
+                            icon: "person.2",
+                            title: searchText.isEmpty ? "No clients yet" : "No results",
+                            subtitle: searchText.isEmpty ? "Tap + to add one" : "Try adjusting your search"
+                        )
+                        .transition(.opacity)
+                        Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(
@@ -4357,6 +4391,8 @@ struct ClientsView: View {
                     )
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.25), value: filteredClients.isEmpty)
             .navigationTitle("Clients")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -4776,23 +4812,22 @@ struct ReportsView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    if allInvoices.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "chart.bar.doc.horizontal")
-                                .font(.system(size: 48))
-                                .foregroundColor(.secondary)
-                            Text("No reports yet")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                            Text("Create invoices to see reports")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.top, 100)
-                    } else {
+            Group {
+                if allInvoices.isEmpty {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        EmptyStateView(
+                            icon: "chart.bar",
+                            title: "No reports yet",
+                            subtitle: "Create invoices to see reports"
+                        )
+                        .transition(.opacity)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 20) {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Reports")
                                 .font(.largeTitle)
@@ -4878,16 +4913,15 @@ struct ReportsView: View {
                         }
                         
                         if currentPeriodInvoices.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "chart.bar.doc.horizontal")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(.secondary)
-                                Text("No data for selected period")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                            }
+                            EmptyStateView(
+                                icon: "chart.bar",
+                                title: "No data for selected period",
+                                subtitle: "Try a different period"
+                            )
+                            .transition(.opacity)
                             .frame(maxWidth: .infinity)
-                            .padding(.top, 100)
+                            .padding(.top, 28)
+                            .padding(.bottom, 20)
                         } else {
                             // A) Revenue Overview
                             VStack(alignment: .leading, spacing: 12) {
@@ -5259,6 +5293,9 @@ struct ReportsView: View {
                     }
                 }
             }
+            }
+            .animation(.easeInOut(duration: 0.25), value: allInvoices.isEmpty)
+            .animation(.easeInOut(duration: 0.25), value: currentPeriodInvoices.isEmpty)
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: reportBusinessGroupingSignature) { _, _ in
                 pruneReportScopeIfNeeded()
@@ -5346,12 +5383,14 @@ struct FilteredInvoicesView: View {
     var body: some View {
         NavigationStack {
             if invoices.isEmpty {
-                VStack(spacing: 12) {
-                    Text("No invoices")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    EmptyStateView(icon: "doc.text", title: "No invoices", subtitle: nil)
+                        .transition(.opacity)
+                    Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(.easeInOut(duration: 0.25), value: invoices.isEmpty)
                 .navigationTitle(title)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -5497,15 +5536,15 @@ struct BusinessProfilesView: View {
                 
                 // Business profiles list
                 if filteredBusinessProfiles.isEmpty {
-                    VStack(spacing: 8) {
-                        Text(searchText.isEmpty ? "No businesses yet" : "No results")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                        if searchText.isEmpty {
-                            Text("Tap + to add one")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
+                    Group {
+                        Spacer(minLength: 0)
+                        EmptyStateView(
+                            icon: "building.2",
+                            title: searchText.isEmpty ? "No businesses yet" : "No results",
+                            subtitle: searchText.isEmpty ? "Tap + to add one" : "Try adjusting your search"
+                        )
+                        .transition(.opacity)
+                        Spacer(minLength: 0)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(
@@ -5580,6 +5619,8 @@ struct BusinessProfilesView: View {
                     )
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.25), value: filteredBusinessProfiles.isEmpty)
             .navigationTitle("My Business")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
