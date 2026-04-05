@@ -197,6 +197,9 @@ final class InvoiceModel {
     var templateRaw: String?
     var themeRaw: String?
     
+    /// Optional free-text shown on forms only until PDF integration (e.g. payment / bank instructions).
+    var additionalNotes: String
+    
     // Client snapshot fields (stored on invoice)
     var clientAddress: String
     var clientPhone: String
@@ -217,7 +220,7 @@ final class InvoiceModel {
     
     @Relationship(deleteRule: .cascade) var items: [LineItemModel]?
     
-    init(id: UUID = UUID(), number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, updatedAt: Date = Date(), businessProfileId: UUID? = nil, clientProfileId: UUID? = nil, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessTaxId: String = "", businessLogoData: Data? = nil, periodStart: Date? = nil, periodEnd: Date? = nil, templateRaw: String? = nil, themeRaw: String? = nil) {
+    init(id: UUID = UUID(), number: String, clientName: String, statusRaw: String, issueDate: Date, dueDate: Date, taxPercent: Double, createdAt: Date, updatedAt: Date = Date(), businessProfileId: UUID? = nil, clientProfileId: UUID? = nil, business: BusinessProfileModel? = nil, items: [LineItemModel]? = nil, paidAt: Date? = nil, currencyCode: String = "USD", clientAddress: String = "", clientPhone: String = "", clientEmail: String = "", clientTaxId: String = "", businessName: String = "", businessAddress: String = "", businessPhone: String = "", businessEmail: String = "", businessTaxId: String = "", businessLogoData: Data? = nil, periodStart: Date? = nil, periodEnd: Date? = nil, templateRaw: String? = nil, themeRaw: String? = nil, additionalNotes: String = "") {
         self.id = id
         self.number = number
         self.clientName = clientName
@@ -247,6 +250,7 @@ final class InvoiceModel {
         self.periodEnd = periodEnd
         self.templateRaw = templateRaw
         self.themeRaw = themeRaw
+        self.additionalNotes = additionalNotes
     }
     
     var status: InvoiceStatus {
@@ -499,7 +503,8 @@ func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allIn
             periodStart: invoice.periodStart,
             periodEnd: invoice.periodEnd,
             templateRaw: invoice.templateRaw,
-            themeRaw: invoice.themeRaw
+            themeRaw: invoice.themeRaw,
+            additionalNotes: invoice.additionalNotes
         )
     
     // Set relationships
@@ -987,6 +992,7 @@ struct CreateInvoiceView: View {
     @State private var showPeriodPicker = false
     @State private var lineItems: [LineItemData] = [LineItemData()]
     @State private var taxPercent: Double = 0.0
+    @State private var additionalNotes = ""
     @State private var showCreateBusinessProfile = false
     @State private var showCreateClient = false
     @State private var itemIndexToDelete: Int?
@@ -1185,6 +1191,11 @@ struct CreateInvoiceView: View {
                     }
                 }
                 
+                Section("Additional Notes") {
+                    TextField("Add payment details, bank info, or other notes", text: $additionalNotes, axis: .vertical)
+                        .lineLimit(4...12)
+                }
+                
                 Section("Totals") {
                     HStack {
                         Text("Subtotal")
@@ -1241,6 +1252,7 @@ struct CreateInvoiceView: View {
                     periodStart = template.periodStart
                     periodEnd = template.periodEnd
                     taxPercent = template.taxPercent
+                    additionalNotes = template.additionalNotes
                     
                     // Copy line items
                     if let items = template.items, !items.isEmpty {
@@ -1414,6 +1426,7 @@ struct CreateInvoiceView: View {
         invoice.businessEmail = snapshotEmail
         invoice.businessTaxId = snapshotTaxId
         invoice.businessLogoData = snapshotLogoData
+        invoice.additionalNotes = additionalNotes
         
         modelContext.insert(invoice)
         
@@ -1451,6 +1464,7 @@ struct EditInvoiceView: View {
     @State private var showPeriodPicker = false
     @State private var lineItems: [LineItemData] = []
     @State private var taxPercent: Double = 0.0
+    @State private var additionalNotes = ""
     @State private var showCreateBusinessProfile = false
     @State private var showCreateClient = false
     @State private var itemIndexToDelete: Int?
@@ -1639,6 +1653,11 @@ struct EditInvoiceView: View {
                     }
                 }
                 
+                Section("Additional Notes") {
+                    TextField("Add payment details, bank info, or other notes", text: $additionalNotes, axis: .vertical)
+                        .lineLimit(4...12)
+                }
+                
                 Section("Totals") {
                     HStack {
                         Text("Subtotal")
@@ -1738,6 +1757,7 @@ struct EditInvoiceView: View {
         periodStart = invoice.periodStart
         periodEnd = invoice.periodEnd
         taxPercent = invoice.taxPercent
+        additionalNotes = invoice.additionalNotes
         
         // Load line items
         if let items = invoice.items {
@@ -1801,6 +1821,7 @@ struct EditInvoiceView: View {
         invoice.periodEnd = periodEnd
         invoice.taxPercent = taxPercent
         invoice.items = newLineItems
+        invoice.additionalNotes = additionalNotes
         invoice.updatedAt = Date()
         
         do {
