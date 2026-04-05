@@ -504,33 +504,36 @@ struct InvoicesView: View {
                 SearchBar(text: $searchText, placeholder: "Search invoices...")
                     .padding(.horizontal)
                     .padding(.top, 8)
+                    .padding(.bottom, allInvoices.isEmpty ? 16 : 0)
                 
-                // Status filter
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        FilterButton(
-                            title: "All",
-                            isSelected: selectedFilter == nil
-                        ) {
-                            selectedFilter = nil
+                // Status filter (only when there is at least one invoice)
+                if !allInvoices.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            FilterButton(
+                                title: "All",
+                                isSelected: selectedFilter == nil
+                            ) {
+                                selectedFilter = nil
+                            }
+                            
+                            FilterButton(
+                                title: "Unpaid",
+                                isSelected: selectedFilter == "Unpaid"
+                            ) {
+                                selectedFilter = selectedFilter == "Unpaid" ? nil : "Unpaid"
+                            }
+                            
+                            FilterButton(
+                                title: "Paid",
+                                isSelected: selectedFilter == "Paid"
+                            ) {
+                                selectedFilter = selectedFilter == "Paid" ? nil : "Paid"
+                            }
                         }
-                        
-                        FilterButton(
-                            title: "Unpaid",
-                            isSelected: selectedFilter == "Unpaid"
-                        ) {
-                            selectedFilter = selectedFilter == "Unpaid" ? nil : "Unpaid"
-                        }
-                        
-                        FilterButton(
-                            title: "Paid",
-                            isSelected: selectedFilter == "Paid"
-                        ) {
-                            selectedFilter = selectedFilter == "Paid" ? nil : "Paid"
-                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 12)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 12)
                 }
                 
                 // Invoices list
