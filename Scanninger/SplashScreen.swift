@@ -7,7 +7,7 @@
 //  2. In ScanningerApp.swift, use MainTabView() directly again
 //  3. Remove the Lottie package (Project → Package Dependencies)
 //
-//  Flow: Splash → Onboarding → SignInView → PaywallView → MainTabView when `hasActiveSubscription` (StoreKit entitlements).
+//  Flow: Splash → OnboardingFlowView (pages 1–2 + sign in) → PaywallView → MainTabView when `hasActiveSubscription` (StoreKit entitlements).
 //  Logout: `PaywallReset.logout()` clears `isSignedIn` only; saved Apple profile preserved; subscription state from StoreKit.
 //
 
@@ -168,6 +168,7 @@ struct SplashView: View {
 struct ScanningerRootView: View {
     @AppStorage(AppFlowStorageKeys.hasSeenOnboarding) private var hasSeenOnboarding = false
     @AppStorage(AppFlowStorageKeys.isSignedIn) private var isSignedIn = false
+    @AppStorage(AppFlowStorageKeys.hasCompletedSignInBefore) private var hasCompletedSignInBefore = false
 
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
 
@@ -186,19 +187,10 @@ struct ScanningerRootView: View {
                 .opacity(showMainApp ? 1 : 0)
                 .allowsHitTesting(showMainApp)
 
-            if !showSplash && !hasSeenOnboarding {
-                OnboardingView {
+            if !showSplash && !isSignedIn {
+                OnboardingFlowView(hasSeenOnboarding: $hasSeenOnboarding) {
                     withAnimation(.easeOut(duration: 0.28)) {
-                        hasSeenOnboarding = true
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .zIndex(1)
-            }
-
-            if !showSplash && hasSeenOnboarding && !isSignedIn {
-                SignInView {
-                    withAnimation(.easeOut(duration: 0.28)) {
+                        hasCompletedSignInBefore = true
                         isSignedIn = true
                     }
                 }
@@ -223,7 +215,7 @@ struct ScanningerRootView: View {
             }
         }
         .animation(.easeOut(duration: 0.28), value: showSplash)
-        .animation(.easeOut(duration: 0.28), value: hasSeenOnboarding)
+        // Do not animate `hasSeenOnboarding` here: `OnboardingFlowView` animates step changes explicitly; animating this flag at the root used to fight `currentStep` when advancing to sign in (e.g. after Skip).
         .animation(.easeOut(duration: 0.28), value: isSignedIn)
         .animation(.easeOut(duration: 0.28), value: hasActiveSubscription)
     }

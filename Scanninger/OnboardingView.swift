@@ -52,9 +52,8 @@ private enum OnboardingLayout {
 
 // MARK: - Reusable chrome (page 1 & 2 — identical styling)
 
-/// Top bar: optional **Back** (page 2) on the leading side, **Skip** trailing. Same insets as before.
+/// Top bar: optional **Back** (page 2) on the leading side, **Skip** trailing. Sits just below the safe area (no extra `safeAreaInsets.top` padding — that was doubling the inset and pushed the bar down).
 private struct OnboardingTopBar: View {
-    let safeTop: CGFloat
     let sideInset: CGFloat
     let onSkip: () -> Void
     var onBack: (() -> Void)?
@@ -79,7 +78,7 @@ private struct OnboardingTopBar: View {
                 .foregroundStyle(OnboardingLightPalette.skipGray)
         }
         .padding(.horizontal, sideInset)
-        .padding(.top, safeTop + 8)
+        .padding(.top, 6)
         .padding(.bottom, 8)
     }
 }
@@ -114,10 +113,9 @@ private struct OnboardingPrimaryPressStyle: ButtonStyle {
     }
 }
 
-/// Pinned bottom bar with Continue — same as page 1.
-private struct OnboardingPrimaryFooter: View {
+/// Primary CTA bar for `safeAreaInset(edge: .bottom)` so layout does not depend on a full-screen `GeometryReader` for bottom inset.
+private struct OnboardingBottomCTA: View {
     let title: String
-    let safeBottom: CGFloat
     let sideInset: CGFloat
     let action: () -> Void
 
@@ -126,7 +124,7 @@ private struct OnboardingPrimaryFooter: View {
             OnboardingPrimaryButton(title: title, action: action)
                 .padding(.horizontal, sideInset)
                 .padding(.top, 16)
-                .padding(.bottom, max(20, safeBottom + 12))
+                .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity)
         .background(OnboardingLightPalette.backgroundBottom)
@@ -333,18 +331,15 @@ private struct OnboardingPageOneView: View {
     let onSkip: () -> Void
 
     var body: some View {
-        GeometryReader { geo in
-            let safeTop = geo.safeAreaInsets.top
-            let safeBottom = geo.safeAreaInsets.bottom
-            let sideInset = OnboardingLayout.horizontalPadding
-            let cardWidth = min(
-                geo.size.width * OnboardingLayout.cardWidthFraction,
-                geo.size.width - sideInset * 2
-            )
+        let sideInset = OnboardingLayout.horizontalPadding
+        VStack(spacing: 0) {
+            OnboardingTopBar(sideInset: sideInset, onSkip: onSkip, onBack: nil)
 
-            VStack(spacing: 0) {
-                OnboardingTopBar(safeTop: safeTop, sideInset: sideInset, onSkip: onSkip, onBack: nil)
-
+            GeometryReader { geo in
+                let cardWidth = min(
+                    geo.size.width * OnboardingLayout.cardWidthFraction,
+                    geo.size.width - sideInset * 2
+                )
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .center, spacing: 0) {
                         OnboardingInvoiceHeroCard()
@@ -376,22 +371,19 @@ private struct OnboardingPageOneView: View {
                             .frame(maxWidth: 300)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Spacer(minLength: OnboardingLayout.scrollBottomBreathing)
+                        Color.clear
+                            .frame(height: OnboardingLayout.scrollBottomBreathing)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, sideInset)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                OnboardingPrimaryFooter(
-                    title: "Continue",
-                    safeBottom: safeBottom,
-                    sideInset: sideInset,
-                    action: onContinue
-                )
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-            .background(OnboardingScreenBackground.gradient())
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(OnboardingScreenBackground.gradient())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            OnboardingBottomCTA(title: "Continue", sideInset: sideInset, action: onContinue)
         }
     }
 }
@@ -404,88 +396,80 @@ private struct OnboardingPageTwoView: View {
     let onBack: () -> Void
 
     var body: some View {
-        GeometryReader { geo in
-            let safeTop = geo.safeAreaInsets.top
-            let safeBottom = geo.safeAreaInsets.bottom
-            let sideInset = OnboardingLayout.horizontalPadding
+        let sideInset = OnboardingLayout.horizontalPadding
+        VStack(spacing: 0) {
+            OnboardingTopBar(sideInset: sideInset, onSkip: onSkip, onBack: onBack)
 
-            VStack(spacing: 0) {
-                OnboardingTopBar(safeTop: safeTop, sideInset: sideInset, onSkip: onSkip, onBack: onBack)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .center, spacing: 0) {
+                    Color.clear
+                        .frame(height: OnboardingLayout.stepBlockTopPadding)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .center, spacing: 0) {
-                        Color.clear
-                            .frame(height: OnboardingLayout.stepBlockTopPadding)
+                    OnboardingStepView(
+                        systemImage: "person.crop.circle",
+                        iconForeground: OnboardingLightPalette.titleNavy,
+                        iconBackground: OnboardingLightPalette.stepNeutralFill,
+                        title: "Add client",
+                        subtitle: "Enter basic details"
+                    )
 
-                        OnboardingStepView(
-                            systemImage: "person.crop.circle",
-                            iconForeground: OnboardingLightPalette.titleNavy,
-                            iconBackground: OnboardingLightPalette.stepNeutralFill,
-                            title: "Add client",
-                            subtitle: "Enter basic details"
-                        )
+                    OnboardingConnectorView()
+                        .padding(.vertical, 6)
 
-                        OnboardingConnectorView()
-                            .padding(.vertical, 6)
+                    OnboardingStepView(
+                        systemImage: "list.clipboard.fill",
+                        iconForeground: OnboardingLightPalette.stepPurpleIcon,
+                        iconBackground: OnboardingLightPalette.stepPurpleFill,
+                        title: "Add items",
+                        subtitle: "List your services"
+                    )
 
-                        OnboardingStepView(
-                            systemImage: "list.clipboard.fill",
-                            iconForeground: OnboardingLightPalette.stepPurpleIcon,
-                            iconBackground: OnboardingLightPalette.stepPurpleFill,
-                            title: "Add items",
-                            subtitle: "List your services"
-                        )
+                    OnboardingConnectorView()
+                        .padding(.vertical, 6)
 
-                        OnboardingConnectorView()
-                            .padding(.vertical, 6)
+                    OnboardingStepView(
+                        systemImage: "paperplane.fill",
+                        iconForeground: OnboardingLightPalette.stepGreenIcon,
+                        iconBackground: OnboardingLightPalette.stepGreenFill,
+                        title: "Send invoice",
+                        subtitle: "Done in seconds"
+                    )
 
-                        OnboardingStepView(
-                            systemImage: "paperplane.fill",
-                            iconForeground: OnboardingLightPalette.stepGreenIcon,
-                            iconBackground: OnboardingLightPalette.stepGreenFill,
-                            title: "Send invoice",
-                            subtitle: "Done in seconds"
-                        )
+                    Color.clear
+                        .frame(height: OnboardingLayout.stepsToMainTitle)
 
-                        Color.clear
-                            .frame(height: OnboardingLayout.stepsToMainTitle)
+                    Text("Create invoices in seconds")
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundStyle(OnboardingLightPalette.titleNavy)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .minimumScaleFactor(0.88)
+                        .padding(.horizontal, 8)
 
-                        Text("Create invoices in seconds")
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
-                            .foregroundStyle(OnboardingLightPalette.titleNavy)
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .minimumScaleFactor(0.88)
-                            .padding(.horizontal, 8)
+                    Color.clear
+                        .frame(height: OnboardingLayout.titleToSubtitle)
 
-                        Color.clear
-                            .frame(height: OnboardingLayout.titleToSubtitle)
+                    Text("Add your client, enter items, and send — it's that simple.")
+                        .font(.system(size: 16, weight: .regular, design: .default))
+                        .foregroundStyle(OnboardingLightPalette.subtitleGray)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
+                        .frame(maxWidth: 320)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                        Text("Add your client, enter items, and send — it's that simple.")
-                            .font(.system(size: 16, weight: .regular, design: .default))
-                            .foregroundStyle(OnboardingLightPalette.subtitleGray)
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(3)
-                            .frame(maxWidth: 320)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Spacer(minLength: OnboardingLayout.scrollBottomBreathing)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, sideInset)
+                    Color.clear
+                        .frame(height: OnboardingLayout.scrollBottomBreathing)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                OnboardingPrimaryFooter(
-                    title: "Continue",
-                    safeBottom: safeBottom,
-                    sideInset: sideInset,
-                    action: onComplete
-                )
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, sideInset)
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-            .background(OnboardingScreenBackground.gradient())
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(OnboardingScreenBackground.gradient())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            OnboardingBottomCTA(title: "Continue", sideInset: sideInset, action: onComplete)
         }
     }
 }
@@ -498,55 +482,126 @@ private enum OnboardingNavigationAnimation {
         .easeInOut(duration: duration)
     }
 
-    /// Page 1: leaves toward leading when going forward; returns from leading when going back.
-    static let pageOne = AnyTransition.asymmetric(
-        insertion: .move(edge: .leading).combined(with: .opacity),
+    /// Forward (0→1, 1→2): outgoing slides off **leading**, incoming from **trailing** — one consistent “push” for every step.
+    static let pushForward = AnyTransition.asymmetric(
+        insertion: .move(edge: .trailing).combined(with: .opacity),
         removal: .move(edge: .leading).combined(with: .opacity)
     )
 
-    /// Page 2: enters from trailing when going forward; leaves toward trailing when going back.
-    static let pageTwo = AnyTransition.asymmetric(
-        insertion: .move(edge: .trailing).combined(with: .opacity),
+    /// Backward (2→1, 1→0): mirror of `pushForward`.
+    static let pushBackward = AnyTransition.asymmetric(
+        insertion: .move(edge: .leading).combined(with: .opacity),
         removal: .move(edge: .trailing).combined(with: .opacity)
     )
 }
 
-// MARK: - Public container
+// MARK: - Public container (onboarding pages 1–2 + sign in as one state machine)
 
-struct OnboardingView: View {
-    let onComplete: () -> Void
+/// Single parent for steps **0 → 1 → 2** (page 1, page 2, sign in). `ScanningerRootView` presents this whenever the user is not signed in after splash.
+struct OnboardingFlowView: View {
+    @Binding var hasSeenOnboarding: Bool
+    let onSignedIn: () -> Void
 
-    @State private var pageIndex = 0
+    @AppStorage(AppFlowStorageKeys.hasCompletedSignInBefore) private var hasCompletedSignInBefore = false
+
+    @State private var currentStep: Int
+    /// Drives which asymmetric transition applies so forward steps all match and Back is the mirror.
+    @State private var stepPushesForward = true
+
+    init(hasSeenOnboarding: Binding<Bool>, onSignedIn: @escaping () -> Void) {
+        self._hasSeenOnboarding = hasSeenOnboarding
+        self.onSignedIn = onSignedIn
+        _currentStep = State(initialValue: Self.restoredStep())
+    }
+
+    /// Restore step from storage; keep logout / returning users on sign-in without onboarding Back (`hasCompletedSignInBefore`).
+    private static func restoredStep() -> Int {
+        let d = UserDefaults.standard
+        if d.bool(forKey: AppFlowStorageKeys.hasCompletedSignInBefore) {
+            return 2
+        }
+        if let n = d.object(forKey: AppFlowStorageKeys.onboardingFlowStep) as? Int, (0...2).contains(n) {
+            return n
+        }
+        return d.bool(forKey: AppFlowStorageKeys.hasSeenOnboarding) ? 2 : 0
+    }
+
+    private static func persistOnboardingStep(_ step: Int) {
+        UserDefaults.standard.set(step, forKey: AppFlowStorageKeys.onboardingFlowStep)
+    }
+
+    private var stepTransition: AnyTransition {
+        stepPushesForward ? OnboardingNavigationAnimation.pushForward : OnboardingNavigationAnimation.pushBackward
+    }
 
     var body: some View {
         ZStack {
-            if pageIndex == 0 {
+            if currentStep == 0 {
                 OnboardingPageOneView(
                     onContinue: {
+                        stepPushesForward = true
                         withAnimation(OnboardingNavigationAnimation.animation) {
-                            pageIndex = 1
+                            currentStep = 1
                         }
                     },
-                    onSkip: onComplete
+                    onSkip: { goToSignIn() }
                 )
-                .transition(OnboardingNavigationAnimation.pageOne)
-            } else {
+                .transition(stepTransition)
+            }
+
+            if currentStep == 1 {
                 OnboardingPageTwoView(
-                    onComplete: onComplete,
-                    onSkip: onComplete,
+                    onComplete: { goToSignIn() },
+                    onSkip: { goToSignIn() },
                     onBack: {
+                        stepPushesForward = false
                         withAnimation(OnboardingNavigationAnimation.animation) {
-                            pageIndex = 0
+                            currentStep = 0
                         }
                     }
                 )
-                .transition(OnboardingNavigationAnimation.pageTwo)
+                .transition(stepTransition)
+            }
+
+            if currentStep == 2 {
+                SignInView(
+                    onSignedIn: onSignedIn,
+                    onBack: hasCompletedSignInBefore
+                        ? nil
+                        : {
+                            stepPushesForward = false
+                            withAnimation(OnboardingNavigationAnimation.animation) {
+                                currentStep = 1
+                            }
+                        }
+                )
+                .transition(stepTransition)
             }
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(currentStep == 2 ? nil : .light)
+        .onAppear {
+            Self.persistOnboardingStep(currentStep)
+        }
+        .onChange(of: currentStep) { _, newStep in
+            Self.persistOnboardingStep(newStep)
+        }
+    }
+
+    private func goToSignIn() {
+        stepPushesForward = true
+        hasSeenOnboarding = true
+        withAnimation(OnboardingNavigationAnimation.animation) {
+            currentStep = 2
+        }
     }
 }
 
-#Preview("Onboarding") {
-    OnboardingView(onComplete: {})
+#Preview("Onboarding flow") {
+    struct Holder: View {
+        @State private var seen = false
+        var body: some View {
+            OnboardingFlowView(hasSeenOnboarding: $seen, onSignedIn: {})
+        }
+    }
+    return Holder()
 }
