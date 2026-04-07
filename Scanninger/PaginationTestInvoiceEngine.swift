@@ -24,14 +24,13 @@ private enum PageMetrics {
     static let pageTopPaddingMm: Double = 20.0
     static let pageBottomPaddingMm: Double = 20.0
 
-    // 5mm safety margin: prevents content from ever touching the CSS page boundary.
-    // Without this, rounding and rendering variance cause the .page div to overflow
-    // past 297mm, which makes UIPrintPageRenderer split it into two physical pages
-    // (creating a blank intermediate page in the PDF).
-    static let safetyMm: Double = 5.0
+    // Safety margin: prevents content from touching the CSS page boundary.
+    // Keeps a buffer so rounding/rendering variance never causes the .page div
+    // to overflow past 297mm (which would make UIPrintPageRenderer split it).
+    static let safetyMm: Double = 3.0
 
     static var usableHeight: Double {
-        pageHeightMm - pageTopPaddingMm - pageBottomPaddingMm - safetyMm // 252.0
+        pageHeightMm - pageTopPaddingMm - pageBottomPaddingMm - safetyMm // 254.0
     }
 
     // CSS px → mm.
@@ -52,10 +51,12 @@ private enum PageMetrics {
     static var infoLineMm: Double { (16.8 + 6.0) * pxMm }
     static var notesLineMm: Double { 13.0 * 1.5 * pxMm }
 
+    static var totalsGapMm: Double { 24.0 * pxMm }
+
     static var totalsContentMm: Double {
-        let row = (16.8 + 8.0) * pxMm
+        let row = (16.8 + 4.0) * pxMm
         let hr = 6.0 * pxMm
-        let big = (33.6 + 8.0) * pxMm
+        let big = (26.4 + 4.0) * pxMm
         return 3.0 * row + hr + big
     }
 
@@ -167,7 +168,7 @@ enum PaginationTestInvoiceEngine {
         }
 
         // ── 5. Totals ──
-        let totalsWithGap = M.sectionGapMm + M.totalsContentMm
+        let totalsWithGap = M.totalsGapMm + M.totalsContentMm
         let totalsAlone = M.totalsContentMm
 
         print("[Paginate] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(limit - currentY))")
@@ -393,10 +394,10 @@ enum PaginationTestInvoiceEngine {
         .item-row{ display:grid; grid-template-columns:3fr 1fr 1fr 1fr; gap:12px; padding:14px 0; border-bottom:1px solid #eee; font-size:14px; }
         .item-title{ font-weight:600; }
         .right{ text-align:right; white-space:nowrap; }
-        .total-section{ margin-top:40px; display:block; }
+        .total-section{ margin-top:24px; display:block; }
         .total-box{ width:300px; margin-left:auto; }
-        .total-row{ display:flex; justify-content:space-between; margin-bottom:8px; }
-        .total{ font-size:28px; font-weight:700; color:\(theme.accentColor); }
+        .total-row{ display:flex; justify-content:space-between; margin-bottom:4px; }
+        .total{ font-size:22px; font-weight:700; color:\(theme.accentColor); }
         .notes-section{ margin-top:24px; padding-top:12px; }
         .page.continuation .items:first-child,
         .page.continuation .total-section:first-child,
