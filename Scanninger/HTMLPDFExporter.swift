@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 import WebKit
 import PDFKit
 
@@ -45,12 +46,11 @@ class HTMLPDFExporter: NSObject {
         print("📄 [HTMLPDFExporter] Starting PDF export for file: \(fileName)")
         print("📄 [HTMLPDFExporter] HTML content length: \(html.count) characters")
         
-        // Create off-screen WKWebView with A4 dimensions (210mm x 297mm at 72 DPI = 595 x 842 points)
-        // Using slightly larger frame to accommodate content
+        // Use A4 width and a tall viewport so multiple HTML `.page` blocks can fully lay out.
         let a4Width: CGFloat = 595  // 210mm at 72 DPI
-        let a4Height: CGFloat = 842 // 297mm at 72 DPI
+        let layoutHeight: CGFloat = 16000
         let configuration = WKWebViewConfiguration()
-        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: a4Width, height: a4Height), configuration: configuration)
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: a4Width, height: layoutHeight), configuration: configuration)
         webView.navigationDelegate = self
         webView.backgroundColor = .white
         
@@ -85,58 +85,35 @@ class HTMLPDFExporter: NSObject {
         }
         
         print("📄 [HTMLPDFExporter] Starting PDF generation")
+        let a4Rect = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let formatter = webView.viewPrintFormatter()
+        formatter.perPageContentInsets = .zero
         
-        // Get content size for PDF configuration
-        let contentSize = webView.scrollView.contentSize
-        print("📄 [HTMLPDFExporter] WebView content size: \(contentSize)")
+        let renderer = UIPrintPageRenderer()
+        renderer.addPrintFormatter(formatter, startingAtPageAt: 0)
+        renderer.setValue(NSValue(cgRect: a4Rect), forKey: "paperRect")
+        renderer.setValue(NSValue(cgRect: a4Rect), forKey: "printableRect")
+        renderer.prepare(forDrawingPages: NSRange(location: 0, length: Int.max))
         
-        // Ensure we have a valid content size
-        let pdfRect: CGRect
-        if contentSize.width > 0 && contentSize.height > 0 {
-            pdfRect = CGRect(origin: .zero, size: contentSize)
-        } else {
-            // Fallback to webView frame size
-            let frameSize = webView.frame.size
-            pdfRect = CGRect(origin: .zero, size: frameSize)
-            print("⚠️ [HTMLPDFExporter] Using fallback PDF rect from frame: \(pdfRect)")
+        var pageCount = renderer.numberOfPages
+        if pageCount <= 0 {
+            let estimated = max(1, Int(ceil(webView.scrollView.contentSize.height / a4Rect.height)))
+            pageCount = estimated
+            print("⚠️ [HTMLPDFExporter] Renderer reported 0 pages, estimated \(estimated) pages")
         }
+        print("📄 [HTMLPDFExporter] Rendering paged PDF with \(pageCount) page(s)")
         
-        // Create PDF configuration
-        let pdfConfig = WKPDFConfiguration()
-        // Set rect based on content size
-        pdfConfig.rect = pdfRect
-        if let configuredRect = pdfConfig.rect {
-            print("📄 [HTMLPDFExporter] PDF configuration rect: \(configuredRect)")
-        } else {
-            print("📄 [HTMLPDFExporter] PDF configuration using default rect (nil)")
+        let data = NSMutableData()
+        UIGraphicsBeginPDFContextToData(data, a4Rect, nil)
+        for index in 0..<pageCount {
+            UIGraphicsBeginPDFPageWithInfo(a4Rect, nil)
+            renderer.drawPage(at: index, in: a4Rect)
         }
+        UIGraphicsEndPDFContext()
         
-        // Generate PDF on main thread
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            webView.createPDF(configuration: pdfConfig) { [weak self] result in
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let pdfData):
-                    print("✅ [HTMLPDFExporter] PDF data generated, size: \(pdfData.count) bytes")
-                    self.writePDFToFile(data: pdfData)
-                    
-                case .failure(let error):
-                    let detailedError = NSError(
-                        domain: "HTMLPDFExporter",
-                        code: 2,
-                        userInfo: [
-                            NSLocalizedDescriptionKey: "Failed to generate PDF: \(error.localizedDescription)",
-                            NSUnderlyingErrorKey: error
-                        ]
-                    )
-                    print("❌ [HTMLPDFExporter] PDF generation failed: \(error.localizedDescription)")
-                    self.completion?(.failure(detailedError))
-                }
-            }
-        }
+        let pdfData = data as Data
+        print("✅ [HTMLPDFExporter] Paged PDF data generated, size: \(pdfData.count) bytes")
+        writePDFToFile(data: pdfData)
     }
     
     private func writePDFToFile(data: Data) {
@@ -246,4 +223,47 @@ extension HTMLPDFExporter: WKNavigationDelegate {
         )
         completion?(.failure(detailedError))
     }
+}
+
+// MARK: - Export Debug Helper
+func exportDebugTwoPageHTMLPDF() async throws -> (url: URL, pageCount: Int) {
+    let debugHTML = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        @page { size: A4 portrait; margin: 0; }
+        html, body { margin: 0; padding: 0; }
+        .page {
+          width: 210mm;
+          min-height: 297mm;
+          box-sizing: border-box;
+          padding: 20mm;
+          break-after: page;
+          page-break-after: always;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        }
+        .page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+        h1 { margin: 0; font-size: 42px; }
+      </style>
+    </head>
+    <body>
+      <div class="page"><h1>PAGE 1</h1></div>
+      <div class="page"><h1>PAGE 2</h1></div>
+    </body>
+    </html>
+    """
+    
+    let exporter = HTMLPDFExporter(html: debugHTML, fileName: "PaginationDebug_2pages.pdf")
+    let url = try await exporter.export()
+    guard let document = PDFDocument(url: url) else {
+        throw NSError(domain: "HTMLPDFExporter", code: 8, userInfo: [NSLocalizedDescriptionKey: "Failed to open debug PDF"])
+    }
+    let count = document.pageCount
+    print("📄 [HTMLPDFExporter] Debug two-page PDF pageCount: \(count)")
+    return (url, count)
 }

@@ -2252,6 +2252,7 @@ enum PDFTemplate: String, CaseIterable {
     case professional = "Professional"
     case elegant = "Elegant"
     case classic = "Classic"
+    case paginationTest = "Pagination Test"
     
     var templateFileName: String {
         switch self {
@@ -2261,6 +2262,8 @@ enum PDFTemplate: String, CaseIterable {
             return "invoice_template_elegant_02"
         case .classic:
             return "invoice_template_classic_03"
+        case .paginationTest:
+            return "InvoiceTemplatePaginationTest"
         }
     }
 }
@@ -2344,7 +2347,7 @@ struct InvoiceDesignPickerView: View {
         self.invoice = invoice
         // Default to HTML template if old/invalid template is selected
         let template: PDFTemplate
-        if invoice.selectedTemplate == .professional || invoice.selectedTemplate == .elegant || invoice.selectedTemplate == .classic {
+        if PDFTemplate.allCases.contains(invoice.selectedTemplate) {
             template = invoice.selectedTemplate
         } else {
             template = .professional
@@ -2404,7 +2407,7 @@ struct InvoiceDesignPickerView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 // Show supported HTML templates
-                                ForEach([PDFTemplate.professional, PDFTemplate.elegant, PDFTemplate.classic], id: \.self) { template in
+                                ForEach([PDFTemplate.professional, PDFTemplate.elegant, PDFTemplate.classic, PDFTemplate.paginationTest], id: \.self) { template in
                                     TemplateOptionCard(
                                         title: template.rawValue,
                                         isSelected: selectedTemplate == template,
@@ -2467,7 +2470,7 @@ struct InvoiceDesignPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 // Ensure template is a valid HTML template
-                if selectedTemplate != .professional && selectedTemplate != .elegant && selectedTemplate != .classic {
+                if !PDFTemplate.allCases.contains(selectedTemplate) {
                     selectedTemplate = .professional
                 }
                 updatePreview()
@@ -2498,7 +2501,7 @@ struct InvoiceDesignPickerView: View {
     
     private func updatePreview() {
         // Only HTML templates are supported
-        guard selectedTemplate == .professional || selectedTemplate == .elegant || selectedTemplate == .classic else {
+        guard PDFTemplate.allCases.contains(selectedTemplate) else {
             previewHTML = nil
             return
         }
@@ -2888,7 +2891,7 @@ struct TemplateSelectionView: View {
     }
     
     private func generatePDF(for template: PDFTemplate) {
-        if template == .professional || template == .elegant || template == .classic {
+        if PDFTemplate.allCases.contains(template) {
             // Load and preview HTML template
             do {
                 let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
@@ -3002,6 +3005,8 @@ struct TemplatePreview: View {
                 HTMLPreview()
             case .classic:
                 ClassicPreview()
+            case .paginationTest:
+                HTMLPreview()
             }
         }
         .padding(8)
@@ -3292,7 +3297,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     
     // Handle HTML templates separately - uses HTML renderer instead of UIGraphicsPDFRenderer
     switch template {
-    case .professional, .elegant, .classic:
+    case .professional, .elegant, .classic, .paginationTest:
         // Render HTML and generate PDF from it
         let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
         
@@ -3338,10 +3343,10 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     let bodyFontSize: CGFloat
     let spacing: CGFloat
     
-    // This code path should never be reached for HTML templates (professional, elegant, classic)
+    // This code path should never be reached for HTML templates
     // as they are handled earlier in the function. This switch is exhaustive for the enum.
     switch template {
-    case .professional, .elegant, .classic:
+    case .professional, .elegant, .classic, .paginationTest:
         // HTML templates should have been handled above
         fatalError("HTML templates should have been handled earlier in the function")
     }
