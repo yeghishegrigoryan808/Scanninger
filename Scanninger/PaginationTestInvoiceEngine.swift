@@ -293,10 +293,10 @@ enum PaginationTestInvoiceEngine {
                 <div class="header">
                     <div class="logo">invoice</div>
                     <div class="contact">
-                        <div>\(esc(invoice.businessName))</div>
-                        \(optDiv(invoice.businessAddress))
-                        \(optDiv(invoice.businessEmail))
-                        \(optDiv(invoice.businessPhone))
+                        \(fieldDiv(invoice.businessName))
+                        \(fieldDiv(invoice.businessAddress))
+                        \(fieldDiv(invoice.businessEmail))
+                        \(fieldDiv(invoice.businessPhone))
                     </div>
                 </div>
                 """
@@ -306,13 +306,13 @@ enum PaginationTestInvoiceEngine {
                 <div class="section">
                     <div class="block">
                         <div class="block-title">BILL TO</div>
-                        <div>\(esc(invoice.clientName))</div>
-                        \(optDiv(invoice.clientAddress))
-                        \(optDiv(invoice.clientEmail))
-                        \(optDiv(invoice.clientPhone))
+                        \(fieldDiv(invoice.clientName))
+                        \(fieldDiv(invoice.clientAddress))
+                        \(fieldDiv(invoice.clientEmail))
+                        \(fieldDiv(invoice.clientPhone))
                     </div>
                     <div class="invoice-info">
-                        <div><b>Invoice #</b> \(esc(invoice.number))</div>
+                        <div><b>Invoice #</b> <span class="meta-value">\(esc(invoice.number))</span></div>
                         <div><b>Issue Date</b> \(esc(invoiceDate))</div>
                         \(periodBlock)
                     </div>
@@ -382,13 +382,15 @@ enum PaginationTestInvoiceEngine {
         .invoice > .items, .invoice > .total-section, .invoice > .notes-section { display:block; }
         .header,.section,.total-section,.notes-section,.item-row,.total-box { page-break-inside:avoid; break-inside:avoid; }
         .header{ display:flex; justify-content:space-between; margin-bottom:40px; }
-        .logo{ font-size:42px; font-weight:300; color:\(theme.accentColor); }
-        .contact{ text-align:right; font-size:14px; color:#555; line-height:1.5; }
-        .section{ display:flex; justify-content:space-between; gap:20px; margin-bottom:40px; }
+        .logo{ font-size:42px; font-weight:300; color:\(theme.accentColor); flex:0 0 48%; max-width:48%; }
+        .contact{ flex:0 0 48%; max-width:48%; min-width:0; font-size:14px; color:#555; line-height:1.5; text-align:left; padding:12px; box-sizing:border-box; }
+        .section{ display:flex; justify-content:space-between; margin-bottom:40px; }
         .block-title{ color:\(theme.titleColor); letter-spacing:2px; font-size:12px; margin-bottom:8px; }
-        .block{ font-size:14px; width:48%; }
-        .invoice-info{ text-align:right; width:48%; font-size:14px; }
-        .invoice-info div{ margin-bottom:6px; }
+        .block{ font-size:14px; flex:0 0 48%; max-width:48%; min-width:0; padding:12px; box-sizing:border-box; text-align:left; }
+        .invoice-info{ text-align:left; font-size:14px; flex:0 0 48%; max-width:48%; min-width:0; padding:12px; box-sizing:border-box; }
+        .invoice-info div{ margin-bottom:6px; max-width:100%; overflow:hidden; overflow-wrap:break-word; word-break:break-word; }
+        .meta-value{ display:inline-block; max-width:100%; white-space:normal; overflow-wrap:break-word; word-break:break-word; }
+        .field-line{ display:block; width:100%; white-space:normal; overflow-wrap:break-word; word-break:break-word; text-align:left; line-height:1.5; }
         .items{ margin-top:40px; }
         .items-header{ display:grid; grid-template-columns:3fr 1fr 1fr 1fr; gap:12px; padding:10px 0; border-bottom:2px solid \(theme.borderColor); color:\(theme.accentColor); font-size:12px; letter-spacing:1px; }
         .item-row{ display:grid; grid-template-columns:3fr 1fr 1fr 1fr; gap:12px; padding:14px 0; border-bottom:1px solid #eee; font-size:14px; }
@@ -437,6 +439,11 @@ enum PaginationTestInvoiceEngine {
             <div class="notes-text">\(esc(n))</div>
         </div>
         """
+    }
+
+    private static func fieldDiv(_ t: String) -> String {
+        let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? "" : "<div class=\"field-line\">\(esc(s))</div>"
     }
 
     private static func optDiv(_ t: String) -> String {
