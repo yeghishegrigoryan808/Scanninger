@@ -231,7 +231,8 @@ struct HTMLInvoiceRenderer {
     
     /// Builds the HTML rows for invoice items (template-specific format)
     private static func buildItemsRows(invoice: InvoiceModel, template: PDFTemplate) -> String {
-        guard let items = invoice.items, !items.isEmpty else {
+        let items = LineItemModel.sortedLineItems(invoice.items)
+        guard !items.isEmpty else {
             // Return empty row based on template format
             switch template {
             case .professional, .paginationTest:

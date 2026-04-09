@@ -371,17 +371,31 @@ final class LineItemModel {
     var price: Double
     var details: String
     var unit: String
+    /// Zero-based position in the invoice line list (user-visible order). Do not rely on relationship array order.
+    var sortOrder: Int
     
-    init(title: String, qty: Int, price: Double, details: String = "", unit: String = "pcs") {
+    init(title: String, qty: Int, price: Double, details: String = "", unit: String = "pcs", sortOrder: Int = 0) {
         self.title = title
         self.qty = qty
         self.price = price
         self.details = details
         self.unit = unit
+        self.sortOrder = sortOrder
     }
     
     var total: Double {
         Double(qty) * price
+    }
+}
+
+extension LineItemModel {
+    /// Stable ordering for display, PDF, and edit load: primary `sortOrder`, then `persistentModelID` for legacy ties.
+    static func sortedLineItems(_ items: [LineItemModel]?) -> [LineItemModel] {
+        guard let items, !items.isEmpty else { return [] }
+        return items.sorted { a, b in
+            if a.sortOrder != b.sortOrder { return a.sortOrder < b.sortOrder }
+            return String(describing: a.persistentModelID) < String(describing: b.persistentModelID)
+        }
     }
 }
 
@@ -498,14 +512,15 @@ func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allIn
     let nextNumber = maxNumber + 1
     let newInvoiceNumber = String(format: "INV-%04d", nextNumber)
     
-    // Deep copy line items
-    let newLineItems = (invoice.items ?? []).map { item in
+    // Deep copy line items (preserve user order via sortOrder)
+    let newLineItems = LineItemModel.sortedLineItems(invoice.items).enumerated().map { index, item in
         LineItemModel(
             title: item.title,
             qty: item.qty,
             price: item.price,
             details: item.details,
-            unit: item.unit
+            unit: item.unit,
+            sortOrder: index
         )
     }
     
@@ -1290,7 +1305,7 @@ struct CreateInvoiceView: View {
                     
                     // Copy line items
                     if let items = template.items, !items.isEmpty {
-                        lineItems = items.map { item in
+                        lineItems = LineItemModel.sortedLineItems(items).map { item in
                             LineItemData(
                                 title: item.title,
                                 qty: item.qty,
@@ -1366,8 +1381,8 @@ struct CreateInvoiceView: View {
         // Generate invoice number only when saving
         let finalInvoiceNumber = invoiceNumber.trimmingCharacters(in: .whitespaces).isEmpty ? generateNextInvoiceNumber() : invoiceNumber
         
-        let lineItemModels = lineItems.map { item in
-            LineItemModel(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit)
+        let lineItemModels = lineItems.enumerated().map { index, item in
+            LineItemModel(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit, sortOrder: index)
         }
         
         var finalBusinessProfile: BusinessProfileModel?
@@ -1792,9 +1807,9 @@ struct EditInvoiceView: View {
         taxPercent = invoice.taxPercent
         additionalNotes = invoice.additionalNotes
         
-        // Load line items
-        if let items = invoice.items {
-            lineItems = items.map { item in
+        // Load line items (explicit sortOrder — relationship array order is not guaranteed)
+        if let items = invoice.items, !items.isEmpty {
+            lineItems = LineItemModel.sortedLineItems(items).map { item in
                 LineItemData(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit.isEmpty ? "pcs" : item.unit)
             }
         } else {
@@ -1810,9 +1825,9 @@ struct EditInvoiceView: View {
             }
         }
         
-        // Create new line items
-        let newLineItems = lineItems.map { item in
-            LineItemModel(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit)
+        // Create new line items (rewrite sortOrder from current editor order)
+        let newLineItems = lineItems.enumerated().map { index, item in
+            LineItemModel(title: item.title, qty: item.qty, price: item.price, details: item.details, unit: item.unit, sortOrder: index)
         }
         
         // Update business properties
@@ -3536,7 +3551,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
         
         // Items list
         let currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
-        let items = invoice.items ?? []
+        let items = LineItemModel.sortedLineItems(invoice.items)
         for item in items {
             let itemTotal = Double(item.qty) * item.price
             let qtyText = item.unit.isEmpty ? "\(item.qty)" : "\(item.qty) \(item.unit)"

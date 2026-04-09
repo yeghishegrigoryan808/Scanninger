@@ -82,7 +82,7 @@ enum PaginationTestInvoiceEngine {
     /// Deterministic single-pass block placement.
     /// One currentY cursor. Pages are only committed when they contain content.
     static func paginate(invoice: InvoiceModel) -> PaginationTestResult {
-        let allItems = invoice.items ?? []
+        let allItems = LineItemModel.sortedLineItems(invoice.items)
         let hasNotes = !invoice.additionalNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let limit = M.usableHeight
 
