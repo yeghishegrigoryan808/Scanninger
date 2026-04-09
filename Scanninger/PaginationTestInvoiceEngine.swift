@@ -294,7 +294,7 @@ enum PaginationTestInvoiceEngine {
                     <div class="logo">invoice</div>
                     <div class="contact">
                         \(fieldDiv(invoice.businessName))
-                        \(fieldDiv(invoice.businessAddress))
+                        \(fieldDivMultiline(invoice.businessAddress))
                         \(fieldDiv(invoice.businessEmail))
                         \(fieldDiv(invoice.businessPhone))
                     </div>
@@ -307,7 +307,7 @@ enum PaginationTestInvoiceEngine {
                     <div class="block">
                         <div class="block-title">BILL TO</div>
                         \(fieldDiv(invoice.clientName))
-                        \(fieldDiv(invoice.clientAddress))
+                        \(fieldDivMultiline(invoice.clientAddress))
                         \(fieldDiv(invoice.clientEmail))
                         \(fieldDiv(invoice.clientPhone))
                     </div>
@@ -444,6 +444,14 @@ enum PaginationTestInvoiceEngine {
     private static func fieldDiv(_ t: String) -> String {
         let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
         return s.isEmpty ? "" : "<div class=\"field-line\">\(esc(s))</div>"
+    }
+
+    private static func fieldDivMultiline(_ t: String) -> String {
+        let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return "" }
+        let normalized = s.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let html = esc(normalized).replacingOccurrences(of: "\n", with: "<br>")
+        return "<div class=\"field-line\">\(html)</div>"
     }
 
     private static func optDiv(_ t: String) -> String {

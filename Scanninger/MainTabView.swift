@@ -106,6 +106,21 @@ private struct FloatingAddButtonPressStyle: ButtonStyle {
     }
 }
 
+// MARK: - Profile form multi-line address
+
+/// UIKit-backed growing multiline address; see `GrowingTextView`.
+private struct ProfileFormAddressEditor: View {
+    let placeholder: String
+    @Binding var text: String
+
+    @State private var fieldHeight: CGFloat = 36
+
+    var body: some View {
+        GrowingTextView(text: $text, placeholder: placeholder, measuredHeight: $fieldHeight)
+            .frame(height: fieldHeight)
+    }
+}
+
 // MARK: - Invoice Status Enum
 enum InvoiceStatus: String, CaseIterable {
     case draft = "Draft"
@@ -3781,7 +3796,7 @@ struct CreateBusinessProfileView: View {
                 
                 Section("Business Information") {
                     TextField("Business Name", text: $name)
-                    TextField("Address", text: $address)
+                    ProfileFormAddressEditor(placeholder: "Address", text: $address)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                     TextField("Email", text: $email)
@@ -3944,7 +3959,7 @@ struct EditBusinessProfileView: View {
                 
                 Section("Business Information") {
                     TextField("Business Name", text: $name)
-                    TextField("Address", text: $address)
+                    ProfileFormAddressEditor(placeholder: "Address", text: $address)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                     TextField("Email", text: $email)
@@ -4102,7 +4117,7 @@ struct CreateClientView: View {
                 
                 Section("Client Information") {
                     TextField("Name", text: $name)
-                    TextField("Address (optional)", text: $address)
+                    ProfileFormAddressEditor(placeholder: "Address (optional)", text: $address)
                     TextField("Phone (optional)", text: $phone)
                         .keyboardType(.phonePad)
                     TextField("Email (optional)", text: $email)
@@ -4267,7 +4282,7 @@ struct EditClientView: View {
                 
                 Section("Client Information") {
                     TextField("Name", text: $name)
-                    TextField("Address (optional)", text: $address)
+                    ProfileFormAddressEditor(placeholder: "Address (optional)", text: $address)
                     TextField("Phone (optional)", text: $phone)
                         .keyboardType(.phonePad)
                     TextField("Email (optional)", text: $email)

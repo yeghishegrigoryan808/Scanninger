@@ -121,11 +121,11 @@ struct HTMLInvoiceRenderer {
         let currentClientPhone = invoice.clientPhone
         
         // Build conditional blocks for optional fields
-        let fromAddressBlock = currentBusinessAddress.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessAddress))</div>"
+        let fromAddressBlock = currentBusinessAddress.isEmpty ? "" : "<div>\(escapeHTMLPreservingLineBreaks(currentBusinessAddress))</div>"
         let fromEmailBlock = currentBusinessEmail.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessEmail))</div>"
         let fromPhoneBlock = currentBusinessPhone.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessPhone))</div>"
         
-        let billToAddressBlock = currentClientAddress.isEmpty ? "" : "<div>\(escapeHTML(currentClientAddress))</div>"
+        let billToAddressBlock = currentClientAddress.isEmpty ? "" : "<div>\(escapeHTMLPreservingLineBreaks(currentClientAddress))</div>"
         let billToEmailBlock = currentClientEmail.isEmpty ? "" : "<div>\(escapeHTML(currentClientEmail))</div>"
         let billToPhoneBlock = currentClientPhone.isEmpty ? "" : "<div>\(escapeHTML(currentClientPhone))</div>"
         
@@ -155,8 +155,8 @@ struct HTMLInvoiceRenderer {
         html = html.replacingOccurrences(of: "{{itemsRows}}", with: itemsRows)
         
         // Build block-style placeholders for elegant template
-        let fromAddressBlockCombined = currentBusinessAddress.isEmpty ? "" : "<div>\(escapeHTML(currentBusinessAddress))</div>"
-        let billToAddressBlockCombined = currentClientAddress.isEmpty ? "" : "<div>\(escapeHTML(currentClientAddress))</div>"
+        let fromAddressBlockCombined = currentBusinessAddress.isEmpty ? "" : "<div>\(escapeHTMLPreservingLineBreaks(currentBusinessAddress))</div>"
+        let billToAddressBlockCombined = currentClientAddress.isEmpty ? "" : "<div>\(escapeHTMLPreservingLineBreaks(currentClientAddress))</div>"
         
         // Tax block (only if tax > 0)
         let taxBlock: String
@@ -351,6 +351,12 @@ struct HTMLInvoiceRenderer {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    /// Escapes HTML, then turns newline characters into `<br>` for multi-line address blocks.
+    private static func escapeHTMLPreservingLineBreaks(_ text: String) -> String {
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        return escapeHTML(normalized).replacingOccurrences(of: "\n", with: "<br>")
     }
     
     /// Formats currency amount
