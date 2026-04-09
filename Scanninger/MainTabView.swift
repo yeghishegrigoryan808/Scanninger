@@ -121,6 +121,26 @@ private struct ProfileFormAddressEditor: View {
     }
 }
 
+// MARK: - Invoice form additional notes (multiline)
+
+/// Same `GrowingTextView` stack as profile Address: true newlines, paste preserves breaks, height grows with content.
+/// Taller min height than Address so the long placeholder can wrap without clipping.
+private struct InvoiceAdditionalNotesEditor: View {
+    @Binding var text: String
+
+    /// ~3 body lines + `GrowingTextView` vertical insets — enough for the full placeholder on typical widths.
+    private static let notesMinHeight: CGFloat = 96
+
+    @State private var fieldHeight: CGFloat = notesMinHeight
+
+    private let placeholder = "Add payment details, bank info, or other notes"
+
+    var body: some View {
+        GrowingTextView(text: $text, placeholder: placeholder, minHeight: Self.notesMinHeight, maxHeight: 320, measuredHeight: $fieldHeight)
+            .frame(height: fieldHeight)
+    }
+}
+
 // MARK: - Invoice Status Enum
 enum InvoiceStatus: String, CaseIterable {
     case draft = "Draft"
@@ -1207,8 +1227,7 @@ struct CreateInvoiceView: View {
                 }
                 
                 Section("Additional Notes") {
-                    TextField("Add payment details, bank info, or other notes", text: $additionalNotes, axis: .vertical)
-                        .lineLimit(4...12)
+                    InvoiceAdditionalNotesEditor(text: $additionalNotes)
                 }
                 
                 Section("Totals") {
@@ -1669,8 +1688,7 @@ struct EditInvoiceView: View {
                 }
                 
                 Section("Additional Notes") {
-                    TextField("Add payment details, bank info, or other notes", text: $additionalNotes, axis: .vertical)
-                        .lineLimit(4...12)
+                    InvoiceAdditionalNotesEditor(text: $additionalNotes)
                 }
                 
                 Section("Totals") {
