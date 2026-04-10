@@ -241,7 +241,8 @@ enum PaginationTestInvoiceEngine {
         let contactLines = estimatedLines(invoice.businessName, minimum: 1) +
             estimatedLines(invoice.businessAddress, minimum: 0) +
             estimatedLines(invoice.businessEmail, minimum: 0) +
-            estimatedLines(invoice.businessPhone, minimum: 0)
+            estimatedLines(invoice.businessPhone, minimum: 0) +
+            estimatedLines(invoice.businessTaxId, minimum: 0)
         return max(M.logoLineMm, contactLines * M.contactLineMm) + M.sectionGapMm
     }
 
@@ -249,7 +250,8 @@ enum PaginationTestInvoiceEngine {
         let clientLines = estimatedLines(invoice.clientName, minimum: 1) +
             estimatedLines(invoice.clientAddress, minimum: 0) +
             estimatedLines(invoice.clientEmail, minimum: 0) +
-            estimatedLines(invoice.clientPhone, minimum: 0)
+            estimatedLines(invoice.clientPhone, minimum: 0) +
+            estimatedLines(invoice.clientTaxId, minimum: 0)
         let leftH = M.blockTitleMm + clientLines * M.bodyLineMm
         let infoCount = 2.0 + (invoice.periodStart != nil && invoice.periodEnd != nil ? 1 : 0)
         let rightH = infoCount * M.infoLineMm
@@ -297,6 +299,7 @@ enum PaginationTestInvoiceEngine {
                         \(fieldDivMultiline(invoice.businessAddress))
                         \(fieldDiv(invoice.businessEmail))
                         \(fieldDiv(invoice.businessPhone))
+                        \(labeledFieldDiv("Tax ID", invoice.businessTaxId))
                     </div>
                 </div>
                 """
@@ -310,6 +313,7 @@ enum PaginationTestInvoiceEngine {
                         \(fieldDivMultiline(invoice.clientAddress))
                         \(fieldDiv(invoice.clientEmail))
                         \(fieldDiv(invoice.clientPhone))
+                        \(labeledFieldDiv("Tax ID", invoice.clientTaxId))
                     </div>
                     <div class="invoice-info">
                         <div><b>Invoice #</b> <span class="meta-value">\(esc(invoice.number))</span></div>
@@ -452,6 +456,11 @@ enum PaginationTestInvoiceEngine {
         let normalized = s.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         let html = esc(normalized).replacingOccurrences(of: "\n", with: "<br>")
         return "<div class=\"field-line\">\(html)</div>"
+    }
+
+    private static func labeledFieldDiv(_ label: String, _ value: String) -> String {
+        let s = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? "" : "<div class=\"field-line\">\(esc(label)): \(esc(s))</div>"
     }
 
     private static func optDiv(_ t: String) -> String {

@@ -19,19 +19,22 @@ enum ElegantPaginatedInvoiceEngine {
 
     private enum M {
         static let pageHeightMm: Double = 297.0
-        static let safetyMm: Double = 1.5
+        static let safetyMm: Double = 1.0
 
-        /// Conservative CSS-px → mm conversion (absorbs font-metric / margin-collapsing variance).
-        static let pxMm: Double = 25.4 / 82.0
+        /// Moderately conservative CSS-px → mm conversion.
+        /// True value ≈ 25.4/96 (0.265mm); we use 25.4/90 (0.282mm) to absorb
+        /// font-metric and margin-collapsing variance while staying closer to reality.
+        static let pxMm: Double = 25.4 / 90.0
 
         /// Top accent bar: 14 CSS-px.
         static var topAccentMm: Double { 14.0 * pxMm }
-        /// `.inner` padding (all four sides in original template).
-        static let innerPaddingMm: Double = 18.0
+        /// `.inner` padding — top stays generous, bottom reduced so content flows lower.
+        static let innerPaddingTopMm: Double = 18.0
+        static let innerPaddingBottomMm: Double = 6.0
 
         /// Usable content height inside `.inner` per page.
         static var usableHeight: Double {
-            pageHeightMm - topAccentMm - (innerPaddingMm * 2) - safetyMm
+            pageHeightMm - topAccentMm - innerPaddingTopMm - innerPaddingBottomMm - safetyMm
         }
 
         // -- Hero (header) ------------------------------------------------
@@ -62,13 +65,13 @@ enum ElegantPaginatedInvoiceEngine {
 
         // -- Totals (compact card) ----------------------------------------
         // Gap before totals = items-wrap CSS margin-bottom
-        static let totalsGapMm: Double = 10.0
-        // Compact card: chrome 24px + 2 rows × 21px + divider 12px + grand 60px
+        static let totalsGapMm: Double = 6.0
+        // Compact card: chrome 20px + 2 rows × 19px + divider 9px + grand 56px
         static var totalsContentMm: Double {
-            let cardChrome = 24.0 * pxMm   // padding 12+12
-            let rows       = 2.0 * 21.0 * pxMm  // subtotal + tax rows (4+13+4 each)
-            let divider    = 12.0 * pxMm   // 5 + 1 + 6
-            let grand      = 60.0 * pxMm   // grand-total box (tighter)
+            let cardChrome = 20.0 * pxMm   // padding 10+10
+            let rows       = 2.0 * 19.0 * pxMm  // subtotal + tax rows (3+13+3 each)
+            let divider    = 9.0 * pxMm    // 4 + 1 + 4
+            let grand      = 56.0 * pxMm   // grand-total box (6+11+2 top + 30.8+6 amount)
             return cardChrome + rows + divider + grand
         }
 
@@ -233,6 +236,9 @@ enum ElegantPaginatedInvoiceEngine {
 
     private static func estimateHeaderHeight(invoice: InvoiceModel) -> Double {
         let fromLines = estimatedLines(invoice.businessAddress, minimum: 0)
+            + estimatedLines(invoice.businessEmail, minimum: 0)
+            + estimatedLines(invoice.businessPhone, minimum: 0)
+            + estimatedLines(invoice.businessTaxId, minimum: 0)
         let leftH     = M.heroFixedMm + fromLines * M.fromLineMm
 
         let metaCount = 2.0 + (invoice.periodStart != nil && invoice.periodEnd != nil ? 1.0 : 0.0)
@@ -245,6 +251,7 @@ enum ElegantPaginatedInvoiceEngine {
         let clientLines = estimatedLines(invoice.clientAddress, minimum: 0)
             + estimatedLines(invoice.clientEmail, minimum: 0)
             + estimatedLines(invoice.clientPhone, minimum: 0)
+            + estimatedLines(invoice.clientTaxId, minimum: 0)
         return M.billToChromeMm + clientLines * M.clientLineMm + M.billToGapMm
     }
 
@@ -282,6 +289,7 @@ enum ElegantPaginatedInvoiceEngine {
         let tax       = cur(taxAmount, cc)
         let tot       = cur(invoice.total, cc)
 
+        let totalPages = result.pages.count
         let pagesHTML = result.pages.map { page -> String in
             var sections = ""
 
@@ -302,11 +310,13 @@ enum ElegantPaginatedInvoiceEngine {
             }
 
             let cls = page.isFirstPage ? "page" : "page continuation"
+            let pageNum = page.pageIndex + 1
             return """
             <div class="\(cls)">
               <div class="top-accent"></div>
               <div class="corner-line-top"></div>
               <div class="corner-line-bottom"></div>
+              <div class="page-number">Page \(pageNum) of \(totalPages)</div>
               <div class="inner">\(sections)</div>
             </div>
             """
@@ -318,8 +328,16 @@ enum ElegantPaginatedInvoiceEngine {
     // MARK: Section Builders
 
     private static func heroHTML(invoice: InvoiceModel, invoiceDate: String) -> String {
-        let addr    = invoice.businessAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        let addrHTML = addr.isEmpty ? "" : escBr(addr)
+        var fromParts: [String] = []
+        let addr = invoice.businessAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !addr.isEmpty { fromParts.append(escBr(addr)) }
+        let email = invoice.businessEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !email.isEmpty { fromParts.append(esc(email)) }
+        let phone = invoice.businessPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !phone.isEmpty { fromParts.append(esc(phone)) }
+        let taxId = invoice.businessTaxId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !taxId.isEmpty { fromParts.append("Tax ID: \(esc(taxId))") }
+        let fromHTML = fromParts.joined(separator: "<br>")
 
         var periodRow = ""
         if let s = invoice.periodStart, let e = invoice.periodEnd {
@@ -337,7 +355,7 @@ enum ElegantPaginatedInvoiceEngine {
           <div class="left-head">
             <div class="business-name">\(esc(invoice.businessName))</div>
             <div class="invoice-title">Invoice</div>
-            <div class="from-lines">\(addrHTML)</div>
+            <div class="from-lines">\(fromHTML)</div>
           </div>
           <div class="right-head">
             <div class="meta-row">
@@ -355,15 +373,23 @@ enum ElegantPaginatedInvoiceEngine {
     }
 
     private static func billToHTML(invoice: InvoiceModel) -> String {
+        var detailParts: [String] = []
         let addr = invoice.clientAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        let addrHTML = addr.isEmpty ? "" : escBr(addr)
+        if !addr.isEmpty { detailParts.append(escBr(addr)) }
+        let email = invoice.clientEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !email.isEmpty { detailParts.append(esc(email)) }
+        let phone = invoice.clientPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !phone.isEmpty { detailParts.append(esc(phone)) }
+        let taxId = invoice.clientTaxId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !taxId.isEmpty { detailParts.append("Tax ID: \(esc(taxId))") }
+        let detailHTML = detailParts.joined(separator: "<br>")
 
         return """
         <div class="bill-to-section">
           <div class="section-label">Billed To</div>
           <div class="client-card">
             <div class="client-name">\(esc(invoice.clientName))</div>
-            <div class="client-lines">\(addrHTML)</div>
+            <div class="client-lines">\(detailHTML)</div>
           </div>
         </div>
         """
@@ -560,7 +586,7 @@ enum ElegantPaginatedInvoiceEngine {
           .inner {
             position: relative;
             z-index: 2;
-            padding: 18mm 18mm 18mm 18mm;
+            padding: 18mm 18mm 6mm 18mm;
           }
 
           /* ── Hero (header) section ────────────────────────────── */
@@ -640,7 +666,7 @@ enum ElegantPaginatedInvoiceEngine {
 
           /* ── Items table ─────────────────────────────────────── */
 
-          .items-wrap { margin-bottom: 10mm; }
+          .items-wrap { margin-bottom: 6mm; }
 
           .table-shell {
             border: 1px solid var(--line);
@@ -696,7 +722,7 @@ enum ElegantPaginatedInvoiceEngine {
           .totals-card {
             border: 1px solid var(--line);
             border-radius: 14px;
-            padding: 12px 16px;
+            padding: 10px 16px;
             background: linear-gradient(180deg, #ffffff, #fbfcfe);
             box-shadow: 0 8px 24px rgba(17, 24, 39, 0.04);
           }
@@ -704,7 +730,7 @@ enum ElegantPaginatedInvoiceEngine {
           .total-row {
             display: flex; justify-content: space-between;
             align-items: center; gap: 14px;
-            padding: 4px 0; font-size: 13px;
+            padding: 3px 0; font-size: 13px;
           }
           .total-row .label { color: #4b5563; }
           .total-row .value {
@@ -714,7 +740,7 @@ enum ElegantPaginatedInvoiceEngine {
 
           .divider {
             height: 1px; background: var(--line);
-            margin: 5px 0 6px 0;
+            margin: 4px 0 4px 0;
           }
 
           .grand-total {
@@ -723,13 +749,13 @@ enum ElegantPaginatedInvoiceEngine {
             background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.35)), var(--accent-soft);
           }
           .grand-total-top {
-            padding: 8px 12px 3px 12px;
+            padding: 6px 12px 2px 12px;
             font-size: 11px; font-weight: 900;
             text-transform: uppercase; letter-spacing: 0.14em;
             color: var(--accent-dark);
           }
           .grand-total-amount {
-            padding: 0 12px 8px 12px;
+            padding: 0 12px 6px 12px;
             font-size: 28px; line-height: 1.1; font-weight: 900;
             color: var(--accent-dark); word-break: break-word;
           }
@@ -748,6 +774,18 @@ enum ElegantPaginatedInvoiceEngine {
           .notes-text {
             font-size: 13px; color: #222;
             line-height: 1.5; white-space: pre-wrap;
+          }
+
+          /* ── Page number ─────────────────────────────────────── */
+
+          .page-number {
+            position: absolute;
+            bottom: 14mm; right: 18mm;
+            font-size: 10px; font-weight: 600;
+            color: #9ca3af;
+            letter-spacing: 0.04em;
+            z-index: 4;
+            pointer-events: none;
           }
 
           /* ── Continuation page tweaks ────────────────────────── */
