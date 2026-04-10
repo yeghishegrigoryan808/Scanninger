@@ -782,7 +782,7 @@ enum ElegantPaginatedInvoiceEngine {
             position: absolute;
             bottom: 14mm; right: 18mm;
             font-size: 10px; font-weight: 600;
-            color: #9ca3af;
+            color: #545352;
             letter-spacing: 0.04em;
             z-index: 4;
             pointer-events: none;

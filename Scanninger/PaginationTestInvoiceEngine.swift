@@ -287,9 +287,11 @@ enum PaginationTestInvoiceEngine {
         let disc = cur(0, cc)
         let tot = cur(invoice.total, cc)
 
+        let totalPages = result.pages.count
         let pagesHTML = result.pages.map { page in
             let cont = (page.showHeader || page.showParties) ? "" : " continuation"
-            var h = "<div class=\"page\(cont)\"><div class=\"invoice\">"
+            let pageNum = page.pageIndex + 1
+            var h = "<div class=\"page\(cont)\"><div class=\"page-number\">Page \(pageNum) of \(totalPages)</div><div class=\"invoice\">"
             if page.showHeader {
                 h += """
                 <div class="header">
@@ -380,6 +382,7 @@ enum PaginationTestInvoiceEngine {
           display:block; width:210mm; min-height:\(M.pageMinHeightCSS);
           margin:0 auto 24px auto; padding:\(M.pagePaddingCSS);
           page-break-after:always; break-after:page; box-sizing:border-box;
+          position:relative;
         }
         .page:last-child { page-break-after:auto; break-after:auto; margin-bottom:0; }
         .invoice { width:100%; background:white; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.08); box-sizing:border-box; display:block; }
@@ -410,6 +413,7 @@ enum PaginationTestInvoiceEngine {
         .page.continuation .notes-section:first-child { margin-top:0; }
         .notes-title{ font-size:12px; font-weight:600; color:#666; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
         .notes-text{ font-size:13px; color:#222; line-height:1.5; white-space:pre-wrap; }
+        .page-number{ position:absolute; bottom:14mm; right:20mm; font-size:10px; font-weight:600; color:#545352; letter-spacing:0.04em; z-index:4; pointer-events:none; }
         @media print {
             body { margin:0; padding:0; background:white; }
             .page { margin:0; padding:\(M.pagePaddingCSS); height:\(M.pageMinHeightCSS); overflow:hidden; }
