@@ -22,6 +22,10 @@ struct HTMLInvoiceRenderer {
             return ElegantPaginatedInvoiceEngine.render(invoice: invoice, theme: theme ?? .ocean)
         }
 
+        if template == .classicPaginated {
+            return ClassicPaginatedInvoiceEngine.render(invoice: invoice, theme: theme ?? .ocean)
+        }
+
         // Get template file name from PDFTemplate
         let templateFileName = template.templateFileName
         
@@ -89,7 +93,7 @@ struct HTMLInvoiceRenderer {
             let elegantFormat = "<div class=\"meta-row\"><div class=\"meta-label\">Period</div><div class=\"meta-value\">\(escapeHTML(periodText))</div></div>"
             let classicFormat = "<div style=\"margin:0 0 8mm 0;font-size:13px;font-weight:600;color:#111111;\">Period: \(escapeHTML(periodText))</div>"
             switch template {
-            case .professional, .paginationTest, .elegantPaginated:
+            case .professional, .paginationTest, .elegantPaginated, .classicPaginated:
                 invoicePeriodBlock = modernFormat
             case .elegant:
                 invoicePeriodBlock = elegantFormat
@@ -166,7 +170,7 @@ struct HTMLInvoiceRenderer {
         let taxBlock: String
         if taxAmount > 0 {
             switch template {
-            case .classic:
+            case .classic, .classicPaginated:
                 taxBlock = "<tr><td class=\"label\">Tax</td><td class=\"value\">\(escapeHTML(formattedTax))</td></tr>"
             case .professional, .elegant, .paginationTest, .elegantPaginated:
                 taxBlock = "<div class=\"total-row\"><div class=\"label\">Tax</div><div class=\"value\">\(escapeHTML(formattedTax))</div></div>"
@@ -179,7 +183,7 @@ struct HTMLInvoiceRenderer {
         let discountBlock: String
         if discount > 0 {
             switch template {
-            case .classic:
+            case .classic, .classicPaginated:
                 discountBlock = "<tr><td class=\"label\">Discount</td><td class=\"value\">\(escapeHTML(formattedDiscount))</td></tr>"
             case .professional, .elegant, .paginationTest, .elegantPaginated:
                 discountBlock = "<div class=\"total-row\"><div class=\"label\">Discount</div><div class=\"value\">\(escapeHTML(formattedDiscount))</div></div>"
@@ -257,7 +261,7 @@ struct HTMLInvoiceRenderer {
                     <td class="num">—</td>
                 </tr>
                 """
-            case .classic:
+            case .classic, .classicPaginated:
                 return """
                 <tr>
                     <td>
@@ -280,7 +284,7 @@ struct HTMLInvoiceRenderer {
         let currencyCode = invoice.currencyCode.isEmpty ? "USD" : invoice.currencyCode
         
         switch template {
-        case .professional, .paginationTest, .elegantPaginated:
+        case .professional, .paginationTest, .elegantPaginated, .classicPaginated:
             // Professional template uses div-based grid layout
             return items.map { item in
                 let description = escapeHTML(item.title)

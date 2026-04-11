@@ -413,7 +413,7 @@ enum PaginationTestInvoiceEngine {
         .page.continuation .notes-section:first-child { margin-top:0; }
         .notes-title{ font-size:12px; font-weight:600; color:#666; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
         .notes-text{ font-size:13px; color:#222; line-height:1.5; white-space:pre-wrap; }
-        .page-number{ position:absolute; bottom:14mm; right:20mm; font-size:10px; font-weight:600; color:#545352; letter-spacing:0.04em; z-index:4; pointer-events:none; }
+        .page-number{ position:absolute; bottom:10mm; right:20mm; font-size:10px; font-weight:600; color:#545352; letter-spacing:0.04em; z-index:4; pointer-events:none; }
         @media print {
             body { margin:0; padding:0; background:white; }
             .page { margin:0; padding:\(M.pagePaddingCSS); height:\(M.pageMinHeightCSS); overflow:hidden; }

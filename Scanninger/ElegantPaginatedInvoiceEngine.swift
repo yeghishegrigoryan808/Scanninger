@@ -780,7 +780,7 @@ enum ElegantPaginatedInvoiceEngine {
 
           .page-number {
             position: absolute;
-            bottom: 14mm; right: 18mm;
+            bottom: 10mm; right: 18mm;
             font-size: 10px; font-weight: 600;
             color: #545352;
             letter-spacing: 0.04em;

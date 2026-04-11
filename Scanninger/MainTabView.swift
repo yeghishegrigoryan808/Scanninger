@@ -2302,6 +2302,7 @@ enum PDFTemplate: String, CaseIterable {
     case classic = "Classic"
     case paginationTest = "Pagination Test"
     case elegantPaginated = "Elegant Pro"
+    case classicPaginated = "Classic Pro"
     
     var templateFileName: String {
         switch self {
@@ -2315,6 +2316,8 @@ enum PDFTemplate: String, CaseIterable {
             return "InvoiceTemplatePaginationTest"
         case .elegantPaginated:
             return "ElegantPaginatedTemplate"
+        case .classicPaginated:
+            return "ClassicPaginatedTemplate"
         }
     }
 }
@@ -2458,7 +2461,7 @@ struct InvoiceDesignPickerView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 // Show supported HTML templates
-                                ForEach([PDFTemplate.professional, PDFTemplate.elegant, PDFTemplate.classic, PDFTemplate.paginationTest, PDFTemplate.elegantPaginated], id: \.self) { template in
+                                ForEach([PDFTemplate.professional, PDFTemplate.elegant, PDFTemplate.classic, PDFTemplate.paginationTest, PDFTemplate.elegantPaginated, PDFTemplate.classicPaginated], id: \.self) { template in
                                     TemplateOptionCard(
                                         title: template.rawValue,
                                         isSelected: selectedTemplate == template,
@@ -3060,6 +3063,8 @@ struct TemplatePreview: View {
                 HTMLPreview()
             case .elegantPaginated:
                 HTMLPreview()
+            case .classicPaginated:
+                ClassicPreview()
             }
         }
         .padding(8)
@@ -3350,7 +3355,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     
     // Handle HTML templates separately - uses HTML renderer instead of UIGraphicsPDFRenderer
     switch template {
-    case .professional, .elegant, .classic, .paginationTest, .elegantPaginated:
+    case .professional, .elegant, .classic, .paginationTest, .elegantPaginated, .classicPaginated:
         // Render HTML and generate PDF from it
         let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
         
@@ -3399,7 +3404,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     // This code path should never be reached for HTML templates
     // as they are handled earlier in the function. This switch is exhaustive for the enum.
     switch template {
-    case .professional, .elegant, .classic, .paginationTest, .elegantPaginated:
+    case .professional, .elegant, .classic, .paginationTest, .elegantPaginated, .classicPaginated:
         // HTML templates should have been handled above
         fatalError("HTML templates should have been handled earlier in the function")
     }
