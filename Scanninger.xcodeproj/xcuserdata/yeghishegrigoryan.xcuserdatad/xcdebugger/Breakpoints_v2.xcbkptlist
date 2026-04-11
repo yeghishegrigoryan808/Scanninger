@@ -16,8 +16,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "27"
             endingLineNumber = "27"
-            landmarkName = "renderInvoice(_:theme:template:)"
-            landmarkType = "7">
+            landmarkName = "HTMLInvoiceRenderer"
+            landmarkType = "14">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

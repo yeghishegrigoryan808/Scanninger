@@ -332,10 +332,19 @@ final class InvoiceModel {
     
     var selectedTemplate: PDFTemplate {
         get {
-            guard let raw = templateRaw, let template = PDFTemplate(rawValue: raw) else {
+            guard let raw = templateRaw, !raw.isEmpty else {
                 return .professional
             }
-            return template
+            if let template = PDFTemplate(rawValue: raw) {
+                return template
+            }
+            // Migration: renamed paginated-only templates (old stored raw values)
+            switch raw {
+            case "Pagination Test": return .professional
+            case "Elegant Pro": return .elegant
+            case "Classic Pro": return .classic
+            default: return .professional
+            }
         }
         set {
             templateRaw = newValue.rawValue
@@ -2296,30 +2305,14 @@ struct DetailRow: View {
 }
 
 // MARK: - PDF Template
+/// All three templates are HTML engines with full multi-page pagination.
 enum PDFTemplate: String, CaseIterable {
+    /// Paginated layout (formerly "Pagination Test").
     case professional = "Professional"
+    /// Paginated elegant layout (formerly "Elegant Pro").
     case elegant = "Elegant"
+    /// Paginated classic layout (formerly "Classic Pro").
     case classic = "Classic"
-    case paginationTest = "Pagination Test"
-    case elegantPaginated = "Elegant Pro"
-    case classicPaginated = "Classic Pro"
-    
-    var templateFileName: String {
-        switch self {
-        case .professional:
-            return "invoice_template_modern"
-        case .elegant:
-            return "invoice_template_elegant_02"
-        case .classic:
-            return "invoice_template_classic_03"
-        case .paginationTest:
-            return "InvoiceTemplatePaginationTest"
-        case .elegantPaginated:
-            return "ElegantPaginatedTemplate"
-        case .classicPaginated:
-            return "ClassicPaginatedTemplate"
-        }
-    }
 }
 
 // MARK: - Invoice Color Theme
@@ -2461,7 +2454,7 @@ struct InvoiceDesignPickerView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 // Show supported HTML templates
-                                ForEach([PDFTemplate.professional, PDFTemplate.elegant, PDFTemplate.classic, PDFTemplate.paginationTest, PDFTemplate.elegantPaginated, PDFTemplate.classicPaginated], id: \.self) { template in
+                                ForEach(PDFTemplate.allCases, id: \.self) { template in
                                     TemplateOptionCard(
                                         title: template.rawValue,
                                         isSelected: selectedTemplate == template,
@@ -2562,19 +2555,13 @@ struct InvoiceDesignPickerView: View {
         
         isGeneratingPreview = true
         DispatchQueue.main.async {
-            do {
-                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme, template: selectedTemplate)
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    previewHTML = html
-                }
-                isGeneratingPreview = false
-            } catch {
-                errorMessage = "Failed to generate preview: \(error.localizedDescription)"
-                showErrorAlert = true
-                isGeneratingPreview = false
+            let html = HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme, template: selectedTemplate)
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                previewHTML = html
             }
+            isGeneratingPreview = false
         }
     }
     
@@ -2584,15 +2571,10 @@ struct InvoiceDesignPickerView: View {
         invoice.selectedTheme = selectedTheme
         
         // Generate HTML preview
-        do {
-            let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme, template: selectedTemplate)
-            previewHTML = html
-            previewPDFURL = nil
-            showPreview = true
-        } catch {
-            errorMessage = "Failed to generate preview: \(error.localizedDescription)"
-            showErrorAlert = true
-        }
+        let html = HTMLInvoiceRenderer.renderInvoice(invoice, theme: selectedTheme, template: selectedTemplate)
+        previewHTML = html
+        previewPDFURL = nil
+        showPreview = true
     }
 }
 
@@ -2945,66 +2927,10 @@ struct TemplateSelectionView: View {
     }
     
     private func generatePDF(for template: PDFTemplate) {
-        if PDFTemplate.allCases.contains(template) {
-            // Load and preview HTML template
-            do {
-                let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
-                print("✅ HTML rendered, showing preview")
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    htmlContent = html
-                }
-            } catch let error as HTMLRenderError {
-                // Use fallback HTML with error message
-                let fallbackHTML = HTMLRenderError.fallbackHTML(error: error)
-                print("⚠️ Using fallback HTML due to error: \(error.localizedDescription)")
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    htmlContent = fallbackHTML
-                }
-                errorMessage = "Template loading error: \(error.localizedDescription)"
-                showErrorAlert = true
-            } catch {
-                let fallbackHTML = """
-                <!DOCTYPE html>
-                <html><head><meta charset="UTF-8"><title>Error</title></head>
-                <body style="font-family: -apple-system; padding: 40px;">
-                <h1 style="color: red;">Error</h1>
-                <p>\(error.localizedDescription)</p>
-                </body></html>
-                """
-                print("❌ Error rendering HTML: \(error.localizedDescription)")
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    htmlContent = fallbackHTML
-                }
-                errorMessage = "Failed to load HTML template: \(error.localizedDescription)"
-                showErrorAlert = true
-            }
-        } else {
-            // Generate PDF for other templates
-            do {
-                let url = try generateInvoicePDF(invoice: invoice, template: template)
-                
-                // Verify file exists and has content
-                guard FileManager.default.fileExists(atPath: url.path) else {
-                    errorMessage = "PDF file was not created"
-                    showErrorAlert = true
-                    return
-                }
-                
-                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-                let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-                if fileSize == 0 {
-                    errorMessage = "PDF file is empty"
-                    showErrorAlert = true
-                    return
-                }
-                
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    pdfURL = url
-                }
-            } catch {
-                errorMessage = "Failed to generate PDF: \(error.localizedDescription)"
-                showErrorAlert = true
-            }
+        let html = HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
+        print("✅ HTML rendered, showing preview")
+        withAnimation(.easeInOut(duration: 0.25)) {
+            htmlContent = html
         }
     }
 }
@@ -3058,12 +2984,6 @@ struct TemplatePreview: View {
             case .elegant:
                 HTMLPreview()
             case .classic:
-                ClassicPreview()
-            case .paginationTest:
-                HTMLPreview()
-            case .elegantPaginated:
-                HTMLPreview()
-            case .classicPaginated:
                 ClassicPreview()
             }
         }
@@ -3355,9 +3275,9 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     
     // Handle HTML templates separately - uses HTML renderer instead of UIGraphicsPDFRenderer
     switch template {
-    case .professional, .elegant, .classic, .paginationTest, .elegantPaginated, .classicPaginated:
+    case .professional, .elegant, .classic:
         // Render HTML and generate PDF from it
-        let html = try HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
+        let html = HTMLInvoiceRenderer.renderInvoice(invoice, theme: invoice.selectedTheme, template: template)
         
         // Use semaphore to wait for async PDF generation
         // Note: This is a synchronous wrapper for the async generatePDFFromHTML function
@@ -3404,7 +3324,7 @@ func generateInvoicePDF(invoice: InvoiceModel, template: PDFTemplate) throws -> 
     // This code path should never be reached for HTML templates
     // as they are handled earlier in the function. This switch is exhaustive for the enum.
     switch template {
-    case .professional, .elegant, .classic, .paginationTest, .elegantPaginated, .classicPaginated:
+    case .professional, .elegant, .classic:
         // HTML templates should have been handled above
         fatalError("HTML templates should have been handled earlier in the function")
     }
