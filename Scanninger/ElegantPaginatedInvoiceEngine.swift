@@ -28,9 +28,9 @@ enum ElegantPaginatedInvoiceEngine {
 
         /// Top accent bar: 14 CSS-px.
         static var topAccentMm: Double { 14.0 * pxMm }
-        /// `.inner` padding — top stays generous, bottom reduced so content flows lower.
+        /// `.inner` padding — top generous, bottom provides safe footer zone for page number.
         static let innerPaddingTopMm: Double = 18.0
-        static let innerPaddingBottomMm: Double = 6.0
+        static let innerPaddingBottomMm: Double = 16.0
 
         /// Usable content height inside `.inner` per page.
         static var usableHeight: Double {
@@ -44,8 +44,8 @@ enum ElegantPaginatedInvoiceEngine {
         static var fromLineMm: Double { 13.0 * 1.7 * pxMm }
         // meta-row: 13px font + 8px margin-bottom
         static var metaRowMm: Double { (13.0 + 8.0) * pxMm }
-        // hero margin-bottom
-        static let heroGapMm: Double = 14.0
+        // hero margin-bottom (tighter gap before Bill To)
+        static let heroGapMm: Double = 10.0
 
         // -- Bill-to ------------------------------------------------------
         // section-label (11+10), card padding top+bottom (18+18), client-name (16+8)
@@ -586,7 +586,7 @@ enum ElegantPaginatedInvoiceEngine {
           .inner {
             position: relative;
             z-index: 2;
-            padding: 18mm 18mm 6mm 18mm;
+            padding: 18mm 18mm 16mm 18mm;
           }
 
           /* ── Hero (header) section ────────────────────────────── */
@@ -596,7 +596,7 @@ enum ElegantPaginatedInvoiceEngine {
             grid-template-columns: 1.2fr 0.8fr;
             gap: 16mm;
             align-items: start;
-            margin-bottom: 14mm;
+            margin-bottom: 10mm;
           }
 
           .left-head { min-width: 0; }
@@ -781,8 +781,8 @@ enum ElegantPaginatedInvoiceEngine {
           .page-number {
             position: absolute;
             bottom: 10mm; right: 18mm;
-            font-size: 10px; font-weight: 600;
-            color: #545352;
+            font-size: 12px; font-weight: 600;
+            color: #a1a09d;
             letter-spacing: 0.04em;
             z-index: 4;
             pointer-events: none;

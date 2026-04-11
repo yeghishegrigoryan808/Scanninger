@@ -760,8 +760,8 @@ enum ClassicPaginatedInvoiceEngine {
           .page-number {
             position: absolute;
             bottom: 10mm; right: 16mm;
-            font-size: 10px; font-weight: 600;
-            color: #9ca3af;
+            font-size: 12px; font-weight: 600;
+            color: #a1a09d;
             letter-spacing: 0.04em;
             z-index: 4;
             pointer-events: none;
