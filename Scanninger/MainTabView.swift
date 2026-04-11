@@ -2388,8 +2388,6 @@ struct InvoiceDesignPickerView: View {
     @State private var errorMessage = ""
     @State private var showPreview = false
     @State private var previewPDFURL: URL?
-    private let a4AspectRatio: CGFloat = 210.0 / 297.0
-    
     init(invoice: InvoiceModel) {
         self.invoice = invoice
         // Default to HTML template if old/invalid template is selected
@@ -2408,32 +2406,9 @@ struct InvoiceDesignPickerView: View {
             VStack(spacing: 0) {
                 // Live Preview Section
                 if let html = previewHTML {
-                    GeometryReader { geometry in
-                        let horizontalMargin: CGFloat = 28
-                        let verticalMargin: CGFloat = 18
-                        let availableWidth = max(geometry.size.width - (horizontalMargin * 2), 0)
-                        let availableHeight = max(geometry.size.height - (verticalMargin * 2), 0)
-                        let pageWidth = min(availableWidth, availableHeight * a4AspectRatio)
-                        let pageHeight = pageWidth / a4AspectRatio
-                        
-                        ZStack {
-                            Color(.systemGray5)
-                            
-                            HTMLPreviewView(html: html)
-                                .frame(width: pageWidth, height: pageHeight)
-                                .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .clipped()
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(Color.black.opacity(0.14), lineWidth: 1)
-                                )
-                                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
-                        }
+                    InvoicePagePreview(html: html)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
+                        .clipped()
                 } else {
                     ProgressView("Generating preview...")
                         .frame(maxWidth: .infinity)
@@ -2646,171 +2621,264 @@ struct ThemeOptionCard: View {
     }
 }
 
-// MARK: - HTML Preview View
-struct HTMLPreviewView: UIViewRepresentable {
+// MARK: - Unified Invoice Page Preview
+//
+// Single-page-at-a-time document viewer with native iOS paging.
+//
+// How it works:
+// 1. CSS injects minimal overrides: gray background, flatten .invoice-document
+// 2. After page load, JS measures a page's natural size, then MOVES (not clones)
+//    each .page into a viewport-sized slide with a scale-transform frame
+// 3. Body content is replaced with a flex track of slides
+// 4. html/body have NO overflow:hidden — WKWebView's scrollView reads the full
+//    content width and isPagingEnabled snaps one slide at a time
+// 5. Page dots update via UIScrollViewDelegate
+
+struct InvoicePagePreview: UIViewRepresentable {
     let html: String
-    
+
+    private static let bgColor = UIColor(red: 232/255, green: 232/255, blue: 237/255, alpha: 1)
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.bounces = false
+        webView.isOpaque = true
+        webView.backgroundColor = Self.bgColor
+        webView.scrollView.backgroundColor = Self.bgColor
+        webView.scrollView.isScrollEnabled = true
+        webView.scrollView.isPagingEnabled = true
+        webView.scrollView.alwaysBounceHorizontal = false
+        webView.scrollView.alwaysBounceVertical = false
         webView.scrollView.showsVerticalScrollIndicator = false
         webView.scrollView.showsHorizontalScrollIndicator = false
         webView.scrollView.clipsToBounds = true
-        webView.isUserInteractionEnabled = false
-        // Hide until JS fit-scale runs; avoids one frame of unscaled (zoomed) document.
+        webView.isUserInteractionEnabled = true
         webView.alpha = 0
         return webView
     }
-    
+
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let normalizedHTML = buildA4PreviewHTML(from: html)
-        if context.coordinator.lastLoadedHTML != normalizedHTML {
-            context.coordinator.lastLoadedHTML = normalizedHTML
+        let prepared = buildPreviewHTML(from: html)
+        if context.coordinator.lastLoadedHTML != prepared {
+            context.coordinator.lastLoadedHTML = prepared
             context.coordinator.prepareForNewLoad(webView: webView)
-            webView.loadHTMLString(normalizedHTML, baseURL: Bundle.main.bundleURL)
-        } else {
-            context.coordinator.applyFitScale(on: webView, completion: nil)
+            webView.loadHTMLString(prepared, baseURL: Bundle.main.bundleURL)
         }
     }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
-    private func buildA4PreviewHTML(from content: String) -> String {
-        // Strip any template-specific viewport so all templates render with identical scaling rules.
-        var sanitizedContent = content.replacingOccurrences(
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // MARK: - HTML preparation
+
+    private func buildPreviewHTML(from content: String) -> String {
+        var s = content.replacingOccurrences(
             of: #"<meta[^>]*name=["']viewport["'][^>]*>"#,
             with: "",
             options: .regularExpression
         )
-        
-        let standardViewport = #"<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">"#
-        let previewResetStyle = """
-        <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: #ffffff;
+
+        // Professional (PaginationTest) has: .page (no bg, 20mm padding) → .invoice (white card, radius, shadow)
+        // Preview wraps .page in .__pv_frame (white, radius, shadow).
+        // Result: double card + a gray/white gap ring from .page's 20mm padding.
+        // Fix: in preview only, transfer the padding from .page to .invoice so .invoice fills the frame edge-to-edge,
+        // and strip .invoice's card chrome (the preview frame already provides the card appearance).
+        let professionalPreviewPolish: String
+        if s.contains("invoice-document") {
+            professionalPreviewPolish = """
+        <style id="__pv_pro">
+        .page {
+          padding: 0 !important;
+          background: #ffffff !important;
+        }
+        .page .invoice {
+          padding: 20mm !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          min-height: 297mm;
         }
         </style>
         """
-        
-        if sanitizedContent.range(of: "</head>", options: .caseInsensitive) != nil {
-            sanitizedContent = sanitizedContent.replacingOccurrences(
-                of: "</head>",
-                with: "\(standardViewport)\n\(previewResetStyle)\n</head>",
-                options: .caseInsensitive
-            )
         } else {
-            sanitizedContent = "\(standardViewport)\n\(previewResetStyle)\n\(sanitizedContent)"
+            professionalPreviewPolish = ""
         }
-        
-        return sanitizedContent
+
+        let inject = """
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <style id="__pv">
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        html { margin:0; padding:0; background:#e8e8ed; }
+        body { margin:0; padding:0; background:#e8e8ed !important; }
+        .invoice-document { display: contents !important; }
+        @media print {
+            .invoice-document { display: block !important; }
+            body { background: white !important; }
+        }
+        </style>
+        \(professionalPreviewPolish)
+        """
+
+        if s.range(of: "</head>", options: .caseInsensitive) != nil {
+            s = s.replacingOccurrences(of: "</head>", with: "\(inject)\n</head>", options: .caseInsensitive)
+        } else {
+            s = "\(inject)\n\(s)"
+        }
+        return s
     }
-    
-    class Coordinator: NSObject, WKNavigationDelegate {
+
+    // After load: measure pages, build paging layout, move pages into slides
+    static let layoutScript = """
+    (function() {
+        if (document.getElementById('__pv_track')) return 'already-done';
+
+        var pages = Array.from(document.querySelectorAll('.page'));
+        if (!pages.length) return 'no-pages:' + document.body.innerHTML.substring(0, 200);
+
+        var first = pages[0];
+        var pw = first.offsetWidth;
+        var ph = first.offsetHeight;
+        if (!pw || !ph) return 'no-size:w=' + pw + ',h=' + ph;
+
+        var vw = window.innerWidth || 390;
+        var vh = window.innerHeight || 700;
+
+        var hPad = 24;
+        var vPad = 16;
+        var scaleX = (vw - hPad * 2) / pw;
+        var scaleY = (vh - vPad * 2) / ph;
+        var scale = Math.min(scaleX, scaleY);
+        if (!isFinite(scale) || scale <= 0) scale = 0.25;
+        if (scale > 1) scale = 1;
+
+        var frameW = Math.round(pw * scale);
+        var frameH = Math.round(ph * scale);
+        var n = pages.length;
+
+        /* Build track: a flex row of viewport-width slides */
+        var track = document.createElement('div');
+        track.id = '__pv_track';
+        track.style.cssText = 'display:flex;flex-direction:row;height:' + vh + 'px;width:' + (n * vw) + 'px;';
+
+        for (var i = 0; i < n; i++) {
+            var slide = document.createElement('div');
+            slide.style.cssText = 'width:' + vw + 'px;height:' + vh + 'px;display:flex;align-items:center;justify-content:center;flex:0 0 ' + vw + 'px;';
+
+            var frame = document.createElement('div');
+            frame.style.cssText = 'width:' + frameW + 'px;height:' + frameH + 'px;position:relative;overflow:hidden;border-radius:4px;box-shadow:0 2px 20px rgba(0,0,0,0.12);background:#fff;';
+
+            var p = pages[i];
+            p.style.position = 'absolute';
+            p.style.top = '0';
+            p.style.left = '0';
+            p.style.width = pw + 'px';
+            p.style.height = ph + 'px';
+            p.style.margin = '0';
+            p.style.transform = 'scale(' + scale + ')';
+            p.style.transformOrigin = 'top left';
+            p.style.boxShadow = 'none';
+
+            frame.appendChild(p);
+            slide.appendChild(frame);
+            track.appendChild(slide);
+        }
+
+        /* Page indicator dots */
+        var dotsHTML = '';
+        if (n > 1) {
+            dotsHTML = '<div id="__pv_dots" style="position:fixed;bottom:8px;left:0;right:0;display:flex;justify-content:center;gap:6px;z-index:100;pointer-events:none;">';
+            for (var d = 0; d < n; d++) {
+                var cls = d === 0 ? 'active' : '';
+                dotsHTML += '<div class="__pv_dot" data-idx="' + d + '" style="width:6px;height:6px;border-radius:50%;background:' + (d === 0 ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.18)') + ';"></div>';
+            }
+            dotsHTML += '</div>';
+        }
+
+        /* Replace body content entirely */
+        document.body.innerHTML = '';
+        document.body.style.cssText = 'margin:0;padding:0;background:#e8e8ed;overflow-y:hidden;';
+        document.body.appendChild(track);
+        if (dotsHTML) document.body.insertAdjacentHTML('beforeend', dotsHTML);
+
+        /* Ensure html allows horizontal overflow for WKWebView scrollView */
+        document.documentElement.style.overflowX = 'auto';
+        document.documentElement.style.overflowY = 'hidden';
+        document.documentElement.style.height = vh + 'px';
+
+        return 'ok:scale=' + scale.toFixed(4) + ',pages=' + n + ',pw=' + pw + ',ph=' + ph + ',vw=' + vw + ',vh=' + vh;
+    })();
+    """
+
+    static let dotUpdateScript = """
+    (function() {
+        var dots = document.querySelectorAll('.__pv_dot');
+        if (!dots.length) return;
+        var scrollX = document.scrollingElement ? document.scrollingElement.scrollLeft : (document.documentElement.scrollLeft || 0);
+        var vw = window.innerWidth || 390;
+        var idx = Math.round(scrollX / vw);
+        dots.forEach(function(d, i) {
+            d.style.background = (i === idx) ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.18)';
+        });
+    })();
+    """
+
+    class Coordinator: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
         var lastLoadedHTML: String?
-        /// Monotonic id for each `loadHTMLString`; `outstandingLoadGenerations` pairs finishes/cancels with prepares.
         private var loadGeneration: UInt64 = 0
         private var outstandingLoadGenerations: [UInt64] = []
-        
+        private weak var activeWebView: WKWebView?
+
         func prepareForNewLoad(webView: WKWebView) {
             loadGeneration += 1
             outstandingLoadGenerations.append(loadGeneration)
-            UIView.performWithoutAnimation {
-                webView.alpha = 0
-            }
+            UIView.performWithoutAnimation { webView.alpha = 0 }
         }
-        
-        private let fitScript = """
-        (function() {
-            const root =
-                document.querySelector('.page') ||
-                document.querySelector('.invoice') ||
-                document.body.firstElementChild ||
-                document.body;
-            if (!root) { return; }
-        
-            root.style.transform = 'none';
-            root.style.transformOrigin = 'top left';
-        
-            document.documentElement.style.overflow = 'hidden';
-            document.body.style.overflow = 'hidden';
-        
-            const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
-            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
-        
-            const rect = root.getBoundingClientRect();
-            if (!rect.width || !rect.height) { return; }
-        
-            const scale = Math.min(viewportWidth / rect.width, viewportHeight / rect.height);
-            const safeScale = (Number.isFinite(scale) && scale > 0) ? scale : 1;
-            const x = (viewportWidth - (rect.width * safeScale)) / 2;
-            const y = (viewportHeight - (rect.height * safeScale)) / 2;
-        
-            root.style.transform = `translate(${x}px, ${y}px) scale(${safeScale})`;
-            root.style.transformOrigin = 'top left';
-        })();
-        """
-        
-        func applyFitScale(on webView: WKWebView, completion: (() -> Void)?) {
-            webView.evaluateJavaScript(fitScript) { _, _ in
-                DispatchQueue.main.async {
-                    completion?()
-                }
-            }
-        }
-        
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard !outstandingLoadGenerations.isEmpty else { return }
-            let finishedGen = outstandingLoadGenerations.removeFirst()
-            applyFitScale(on: webView, completion: {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    self.applyFitScale(on: webView, completion: {
-                        DispatchQueue.main.async {
-                            // Only reveal if this navigation is still the latest (avoids stale callbacks when switching fast).
-                            guard finishedGen == self.loadGeneration else { return }
-                            UIView.performWithoutAnimation {
-                                webView.alpha = 1
+            let gen = outstandingLoadGenerations.removeFirst()
+            activeWebView = webView
+            webView.scrollView.delegate = self
+
+            // First run: pages are in original position, measure and restructure
+            webView.evaluateJavaScript(InvoicePagePreview.layoutScript) { result, error in
+                let res = (result as? String) ?? "nil"
+                if res.hasPrefix("no-size") || res.hasPrefix("no-pages") {
+                    // Pages may not have resolved mm units yet — retry after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        webView.evaluateJavaScript(InvoicePagePreview.layoutScript) { _, _ in
+                            DispatchQueue.main.async {
+                                guard gen == self.loadGeneration else { return }
+                                UIView.animate(withDuration: 0.15) { webView.alpha = 1 }
                             }
                         }
-                    })
+                    }
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        guard gen == self.loadGeneration else { return }
+                        UIView.animate(withDuration: 0.15) { webView.alpha = 1 }
+                    }
                 }
-            })
+            }
         }
-        
-        private func handleNavigationFailure(webView: WKWebView, error: Error) {
-            let code = (error as NSError).code
-            if code == NSURLErrorCancelled {
-                if !outstandingLoadGenerations.isEmpty {
-                    outstandingLoadGenerations.removeFirst()
-                }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            activeWebView?.evaluateJavaScript(InvoicePagePreview.dotUpdateScript, completionHandler: nil)
+        }
+
+        private func handleFail(webView: WKWebView, error: Error) {
+            if (error as NSError).code == NSURLErrorCancelled {
+                if !outstandingLoadGenerations.isEmpty { outstandingLoadGenerations.removeFirst() }
                 return
             }
-            DispatchQueue.main.async {
-                if !self.outstandingLoadGenerations.isEmpty {
-                    self.outstandingLoadGenerations.removeFirst()
-                }
-                webView.alpha = 1
-            }
+            if !outstandingLoadGenerations.isEmpty { outstandingLoadGenerations.removeFirst() }
+            DispatchQueue.main.async { webView.alpha = 1 }
         }
-        
+
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            handleNavigationFailure(webView: webView, error: error)
+            handleFail(webView: webView, error: error)
         }
-        
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            handleNavigationFailure(webView: webView, error: error)
+            handleFail(webView: webView, error: error)
         }
     }
 }
@@ -3551,31 +3619,16 @@ struct HTMLInvoicePreviewSheet: View {
     let invoice: InvoiceModel
     @Binding var isGeneratingPDF: Bool
     let onBack: () -> Void
-    private let a4AspectRatio: CGFloat = 210.0 / 297.0
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
     @State private var shareItem: ShareItem?
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
-                GeometryReader { geometry in
-                    let horizontalMargin: CGFloat = 16
-                    let verticalMargin: CGFloat = 14
-                    let availableWidth = max(geometry.size.width - (horizontalMargin * 2), 0)
-                    let availableHeight = max(geometry.size.height - (verticalMargin * 2), 0)
-                    let pageWidth = min(availableWidth, availableHeight * a4AspectRatio)
-                    
-                    ZStack {
-                        Color(.systemGray6)
-                            .ignoresSafeArea()
-                        
-                        HTMLInvoicePreviewView(html: html)
-                            .frame(width: pageWidth, height: pageWidth / a4AspectRatio)
-                            .background(Color.white)
-                    }
-                }
-                
+                InvoicePagePreview(html: html)
+                    .ignoresSafeArea(edges: .bottom)
+
                 if isGeneratingPDF {
                     Color.black.opacity(0.3)
                         .edgesIgnoringSafeArea(.all)
@@ -3610,10 +3663,10 @@ struct HTMLInvoicePreviewSheet: View {
             }
         }
     }
-    
+
     private func exportPDF() {
         isGeneratingPDF = true
-        
+
         Task {
             do {
                 let url = try await generatePDFFromHTML(html, invoiceNumber: invoice.number)
