@@ -19,7 +19,7 @@ enum ElegantPaginatedInvoiceEngine {
 
     private enum M {
         static let pageHeightMm: Double = 297.0
-        static let safetyMm: Double = 1.0
+        static let safetyMm: Double = 5.0
 
         /// Moderately conservative CSS-px → mm conversion.
         /// True value ≈ 25.4/96 (0.265mm); we use 25.4/90 (0.282mm) to absorb
@@ -30,7 +30,7 @@ enum ElegantPaginatedInvoiceEngine {
         static var topAccentMm: Double { 14.0 * pxMm }
         /// `.inner` padding — top generous, bottom provides safe footer zone for page number.
         static let innerPaddingTopMm: Double = 18.0
-        static let innerPaddingBottomMm: Double = 16.0
+        static let innerPaddingBottomMm: Double = 20.0
 
         /// Usable content height inside `.inner` per page.
         static var usableHeight: Double {
@@ -586,7 +586,7 @@ enum ElegantPaginatedInvoiceEngine {
           .inner {
             position: relative;
             z-index: 2;
-            padding: 18mm 18mm 16mm 18mm;
+            padding: 18mm 18mm 20mm 18mm;
           }
 
           /* ── Hero (header) section ────────────────────────────── */

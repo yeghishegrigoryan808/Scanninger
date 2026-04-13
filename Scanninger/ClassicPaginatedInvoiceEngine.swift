@@ -19,7 +19,7 @@ enum ClassicPaginatedInvoiceEngine {
 
     private enum M {
         static let pageHeightMm: Double = 297.0
-        static let safetyMm: Double = 1.0
+        static let safetyMm: Double = 5.0
 
         /// Moderately conservative CSS-px → mm conversion (same as elegant paginated).
         static let pxMm: Double = 25.4 / 90.0
@@ -27,7 +27,7 @@ enum ClassicPaginatedInvoiceEngine {
         /// `.inner` padding — top 18mm, bottom 6mm (generous top, reduced bottom).
         /// The subtle accent bar (5px) is position:absolute so it does NOT reduce flow space.
         static let innerPaddingTopMm: Double = 18.0
-        static let innerPaddingBottomMm: Double = 16.0
+        static let innerPaddingBottomMm: Double = 20.0
 
         /// Usable content height inside `.inner` per page.
         static var usableHeight: Double {
@@ -538,7 +538,7 @@ enum ClassicPaginatedInvoiceEngine {
           .inner {
             position: relative;
             z-index: 2;
-            padding: 18mm 16mm 16mm 16mm;
+            padding: 18mm 16mm 20mm 16mm;
           }
 
           /* ── Top row (title + invoice box) ──────────────────── */

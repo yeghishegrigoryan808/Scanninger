@@ -24,13 +24,19 @@ private enum PageMetrics {
     static let pageTopPaddingMm: Double = 20.0
     static let pageBottomPaddingMm: Double = 20.0
 
-    // Safety margin: prevents content from touching the CSS page boundary.
-    // Keeps a buffer so rounding/rendering variance never causes the .page div
-    // to overflow past 297mm (which would make UIPrintPageRenderer split it).
+    /// Real reserved footer block height (page number lives here).
+    /// Content can never enter this zone because it's a separate flex child.
+    static let footerHeightMm: Double = 12.0
+
+    /// Small extra buffer for rounding/rendering variance.
     static let safetyMm: Double = 3.0
 
+    /// Extra clearance required *below* an item row before we accept it on the current page.
+    /// Prevents borderline rows from being clipped by `.page-inner { overflow:hidden }` near the footer.
+    static let rowFitBufferMm: Double = 4.0
+
     static var usableHeight: Double {
-        pageHeightMm - pageTopPaddingMm - pageBottomPaddingMm - safetyMm // 254.0
+        pageHeightMm - pageTopPaddingMm - pageBottomPaddingMm - footerHeightMm - safetyMm
     }
 
     // CSS px → mm.
@@ -43,8 +49,8 @@ private enum PageMetrics {
 
     static var sectionGapMm: Double { 40.0 * pxMm }
     static var tableHeaderMm: Double { (20.0 + 2.0 + 14.4) * pxMm }
-    static var itemRowChromeMm: Double { 29.0 * pxMm }
-    static var bodyLineMm: Double { 14.0 * 1.2 * pxMm }
+    static var itemRowChromeMm: Double { 33.0 * pxMm }
+    static var bodyLineMm: Double { 14.0 * 1.35 * pxMm }
     static var contactLineMm: Double { 14.0 * 1.5 * pxMm }
     static var logoLineMm: Double { 42.0 * 1.2 * pxMm }
     static var blockTitleMm: Double { (14.4 + 8.0) * pxMm }
@@ -63,7 +69,7 @@ private enum PageMetrics {
     static var notesSamePageChromeMm: Double { 36.0 * pxMm }
     static var notesNewPageChromeMm: Double { 12.0 * pxMm }
 
-    static let charsPerLine: Double = 62.0
+    static let charsPerLine: Double = 52.0
 
     static var pagePaddingCSS: String { String(format: "%.0fmm", pageTopPaddingMm) }
     static var pageMinHeightCSS: String { String(format: "%.0fmm", pageHeightMm) }
@@ -148,7 +154,7 @@ enum PaginationTestInvoiceEngine {
             let firstOnPage = wkItems.isEmpty
             let need = firstOnPage ? (thH + rowH) : rowH
 
-            if currentY + need <= limit {
+            if currentY + need + M.rowFitBufferMm <= limit {
                 if firstOnPage {
                     currentY += thH
                     print("[Paginate] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -157,7 +163,7 @@ enum PaginationTestInvoiceEngine {
                 currentY += rowH
                 print("[Paginate] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) y=\(f(currentY)) fit=YES")
             } else {
-                print("[Paginate] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) need=\(f(need)) avail=\(f(limit - currentY)) fit=NO → new page")
+                print("[Paginate] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) need=\(f(need + M.rowFitBufferMm)) avail=\(f(limit - currentY)) fit=NO → new page")
                 nextPage()
                 currentY += thH
                 print("[Paginate] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -291,7 +297,7 @@ enum PaginationTestInvoiceEngine {
         let pagesHTML = result.pages.map { page in
             let cont = (page.showHeader || page.showParties) ? "" : " continuation"
             let pageNum = page.pageIndex + 1
-            var h = "<div class=\"page\(cont)\"><div class=\"page-number\">Page \(pageNum) of \(totalPages)</div><div class=\"invoice\">"
+            var h = "<div class=\"page\(cont)\"><div class=\"page-inner\"><div class=\"invoice\">"
             if page.showHeader {
                 h += """
                 <div class="header">
@@ -363,7 +369,7 @@ enum PaginationTestInvoiceEngine {
                 """
             }
             if page.showNotes { h += notesBlock }
-            h += "</div></div>"
+            h += "</div></div><div class=\"page-footer\">Page \(pageNum) of \(totalPages)</div></div>"
             return h
         }.joined(separator: "\n")
 
@@ -379,12 +385,19 @@ enum PaginationTestInvoiceEngine {
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background:#f4f6f8; }
         .invoice-document { display:block; width:100%; }
         .page {
-          display:block; width:210mm; min-height:\(M.pageMinHeightCSS);
-          margin:0 auto 24px auto; padding:\(M.pagePaddingCSS);
+          display:flex; flex-direction:column; width:210mm; height:\(M.pageMinHeightCSS);
+          margin:0 auto 24px auto; padding:\(M.pagePaddingCSS) \(M.pagePaddingCSS) 0 \(M.pagePaddingCSS);
           page-break-after:always; break-after:page; box-sizing:border-box;
-          position:relative;
+          position:relative; overflow:hidden;
         }
         .page:last-child { page-break-after:auto; break-after:auto; margin-bottom:0; }
+        .page-inner { flex:1; overflow:hidden; }
+        .page-footer {
+          flex-shrink:0; height:\(String(format: "%.0fmm", M.footerHeightMm));
+          display:flex; align-items:center; justify-content:flex-end;
+          font-size:12px; font-weight:600; color:#7a7a79;
+          letter-spacing:0.04em; box-sizing:border-box;
+        }
         .invoice { width:100%; background:white; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.08); box-sizing:border-box; display:block; }
         .invoice > .items, .invoice > .total-section, .invoice > .notes-section { display:block; }
         .header,.section,.total-section,.notes-section,.item-row,.total-box { page-break-inside:avoid; break-inside:avoid; }
@@ -413,10 +426,10 @@ enum PaginationTestInvoiceEngine {
         .page.continuation .notes-section:first-child { margin-top:0; }
         .notes-title{ font-size:12px; font-weight:600; color:#666; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
         .notes-text{ font-size:13px; color:#222; line-height:1.5; white-space:pre-wrap; }
-        .page-number{ position:absolute; bottom:10mm; right:20mm; font-size:12px; font-weight:600; color:#7a7a79; letter-spacing:0.04em; z-index:4; pointer-events:none; }
+        
         @media print {
             body { margin:0; padding:0; background:white; }
-            .page { margin:0; padding:\(M.pagePaddingCSS); height:\(M.pageMinHeightCSS); overflow:hidden; }
+            .page { margin:0; padding:\(M.pagePaddingCSS) \(M.pagePaddingCSS) 0 \(M.pagePaddingCSS); height:\(M.pageMinHeightCSS); overflow:hidden; }
             .invoice { box-shadow:none; border-radius:0; }
         }
         </style>
