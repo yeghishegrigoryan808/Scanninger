@@ -35,6 +35,18 @@ private enum PageMetrics {
     /// Prevents borderline rows from being clipped by `.page-inner { overflow:hidden }` near the footer.
     static let rowFitBufferMm: Double = 4.0
 
+    /// Notes are one block (`page-break-inside: avoid`); use no extra buffer here.
+    /// Footer safety already comes from usableHeight/footerHeight/safetyMm.
+    static let notesFitBufferMm: Double = 0.0
+
+    /// Compensates for accumulated conservative drift from header/parties/item rows.
+    /// Applies only to trailing totals/notes decisions, never to row pagination.
+    static let trailingFitSlackMm: Double = 24.0
+
+    /// Compensates for accumulated row-height overestimation on continuation item pages.
+    /// Keeps first-page row safety unchanged.
+    static let continuationRowFitSlackMm: Double = 12.0
+
     static var usableHeight: Double {
         pageHeightMm - pageTopPaddingMm - pageBottomPaddingMm - footerHeightMm - safetyMm
     }
@@ -49,15 +61,19 @@ private enum PageMetrics {
 
     static var sectionGapMm: Double { 40.0 * pxMm }
     static var tableHeaderMm: Double { (20.0 + 2.0 + 14.4) * pxMm }
-    static var itemRowChromeMm: Double { 33.0 * pxMm }
-    static var bodyLineMm: Double { 14.0 * 1.35 * pxMm }
+    static var itemRowChromeMm: Double { 29.0 * pxMm }
+    static var titleLineMm: Double { 14.0 * 1.25 * pxMm }
+    static var detailLineMm: Double { 11.0 * 1.25 * pxMm }
+    static var bodyLineMm: Double { titleLineMm }
     static var contactLineMm: Double { 14.0 * 1.5 * pxMm }
     static var logoLineMm: Double { 42.0 * 1.2 * pxMm }
     static var blockTitleMm: Double { (14.4 + 8.0) * pxMm }
     static var infoLineMm: Double { (16.8 + 6.0) * pxMm }
-    static var notesLineMm: Double { 13.0 * 1.5 * pxMm }
+    /// Matches `.notes-text` 13px × line-height 1.5; slight trim vs row body to avoid over-counting.
+    static var notesLineMm: Double { 13.0 * 1.48 * pxMm }
 
-    static var totalsGapMm: Double { 24.0 * pxMm }
+    /// `.total-section { margin-top:24px }`; trim slightly so totals+notes are less conservative.
+    static var totalsGapMm: Double { 20.0 * pxMm }
 
     static var totalsContentMm: Double {
         let row = (16.8 + 4.0) * pxMm
@@ -70,6 +86,9 @@ private enum PageMetrics {
     static var notesNewPageChromeMm: Double { 12.0 * pxMm }
 
     static let charsPerLine: Double = 52.0
+
+    /// Notes span nearly full invoice width; 88 over-counts wraps and pushes notes too early.
+    static let notesCharsPerLine: Double = 104.0
 
     static var pagePaddingCSS: String { String(format: "%.0fmm", pageTopPaddingMm) }
     static var pageMinHeightCSS: String { String(format: "%.0fmm", pageHeightMm) }
@@ -153,8 +172,9 @@ enum PaginationTestInvoiceEngine {
             let rowH = estimateItemRowHeight(item: item)
             let firstOnPage = wkItems.isEmpty
             let need = firstOnPage ? (thH + rowH) : rowH
+            let rowSlack = (!wkFirst && !wkHeader && !wkParties) ? M.continuationRowFitSlackMm : 0.0
 
-            if currentY + need + M.rowFitBufferMm <= limit {
+            if currentY + need + M.rowFitBufferMm <= limit + rowSlack {
                 if firstOnPage {
                     currentY += thH
                     print("[Paginate] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -163,7 +183,7 @@ enum PaginationTestInvoiceEngine {
                 currentY += rowH
                 print("[Paginate] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) y=\(f(currentY)) fit=YES")
             } else {
-                print("[Paginate] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) need=\(f(need + M.rowFitBufferMm)) avail=\(f(limit - currentY)) fit=NO → new page")
+                print("[Paginate] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) need=\(f(need + M.rowFitBufferMm)) avail=\(f(limit + rowSlack - currentY)) slack=\(f(rowSlack)) fit=NO → new page")
                 nextPage()
                 currentY += thH
                 print("[Paginate] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -176,9 +196,10 @@ enum PaginationTestInvoiceEngine {
         // ── 5. Totals ──
         let totalsWithGap = M.totalsGapMm + M.totalsContentMm
         let totalsAlone = M.totalsContentMm
+        let trailingSlack = (wkHeader || wkParties || !wkItems.isEmpty) ? M.trailingFitSlackMm : 0.0
 
-        print("[Paginate] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(limit - currentY))")
-        if currentY + totalsWithGap <= limit {
+        print("[Paginate] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(limit + trailingSlack - currentY)) slack=\(f(trailingSlack))")
+        if currentY + totalsWithGap <= limit + trailingSlack {
             wkTotals = true
             currentY += totalsWithGap
             print("[Paginate] pg\(wkIdx) TOTALS h=\(f(totalsWithGap)) y=\(f(currentY)) fit=YES")
@@ -194,9 +215,11 @@ enum PaginationTestInvoiceEngine {
         if hasNotes {
             let notesSame = estimateNotesHeight(invoice.additionalNotes, isFirstChild: false)
             let notesAlone = estimateNotesHeight(invoice.additionalNotes, isFirstChild: true)
+            let notesNeed = notesSame + M.notesFitBufferMm
+            let notesSlack = (wkHeader || wkParties || !wkItems.isEmpty) ? M.trailingFitSlackMm : 0.0
 
-            print("[Paginate] pg\(wkIdx) NOTES? need=\(f(notesSame)) avail=\(f(limit - currentY))")
-            if currentY + notesSame <= limit {
+            print("[Paginate] pg\(wkIdx) NOTES? need=\(f(notesNeed)) avail=\(f(limit + notesSlack - currentY)) slack=\(f(notesSlack))")
+            if currentY + notesNeed <= limit + notesSlack {
                 wkNotes = true
                 currentY += notesSame
                 print("[Paginate] pg\(wkIdx) NOTES h=\(f(notesSame)) y=\(f(currentY)) fit=YES")
@@ -239,8 +262,11 @@ enum PaginationTestInvoiceEngine {
     // MARK: Height Estimates
 
     private static func estimateItemRowHeight(item: LineItemModel) -> Double {
-        let lines = estimatedLines(item.title, minimum: 1) + estimatedLines(item.details, minimum: 0)
-        return M.itemRowChromeMm + lines * M.bodyLineMm
+        let titleLines = estimatedLines(item.title, minimum: 1)
+        let detailLines = estimatedLines(item.details, minimum: 0)
+        return M.itemRowChromeMm
+            + titleLines * M.titleLineMm
+            + detailLines * M.detailLineMm
     }
 
     private static func estimateHeaderHeight(invoice: InvoiceModel) -> Double {
@@ -265,9 +291,17 @@ enum PaginationTestInvoiceEngine {
     }
 
     private static func estimateNotesHeight(_ notes: String, isFirstChild: Bool) -> Double {
-        let lines = estimatedLines(notes, minimum: 1)
+        let lines = estimatedNotesLines(notes, minimum: 1)
         let chrome = isFirstChild ? M.notesNewPageChromeMm : M.notesSamePageChromeMm
         return chrome + lines * M.notesLineMm
+    }
+
+    private static func estimatedNotesLines(_ text: String, minimum: Double) -> Double {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return minimum }
+        return max(minimum, trimmed.components(separatedBy: "\n").reduce(0.0) { sum, line in
+            sum + max(1, ceil(Double(max(line.count, 1)) / M.notesCharsPerLine))
+        })
     }
 
     private static func estimatedLines(_ text: String, minimum: Double) -> Double {
@@ -333,7 +367,7 @@ enum PaginationTestInvoiceEngine {
             }
             if !page.itemRows.isEmpty {
                 let rows = page.itemRows.map { item in
-                    let det = item.details.isEmpty ? "" : "<br><small style=\"color:#888;\">\(esc(item.details))</small>"
+                    let det = item.details.isEmpty ? "" : "<span class=\"item-details\">\(esc(item.details))</span>"
                     return """
                     <div class="item-row">
                         <div class="item-title">\(esc(item.title))\(det)</div>
@@ -414,7 +448,8 @@ enum PaginationTestInvoiceEngine {
         .items{ margin-top:40px; }
         .items-header{ display:grid; grid-template-columns:3fr 1fr 1fr 1fr; gap:12px; padding:10px 0; border-bottom:2px solid \(theme.borderColor); color:\(theme.accentColor); font-size:12px; letter-spacing:1px; }
         .item-row{ display:grid; grid-template-columns:3fr 1fr 1fr 1fr; gap:12px; padding:14px 0; border-bottom:1px solid #eee; font-size:14px; }
-        .item-title{ font-weight:600; }
+        .item-title{ font-weight:600; line-height:1.25; }
+        .item-details{ display:block; font-size:11px; line-height:1.25; color:#888; font-weight:400; }
         .right{ text-align:right; white-space:nowrap; }
         .total-section{ margin-top:24px; display:block; }
         .total-box{ width:300px; margin-left:auto; }

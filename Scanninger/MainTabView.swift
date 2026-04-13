@@ -2731,6 +2731,34 @@ private struct SinglePagePreview: UIViewRepresentable {
             professionalPolish = ""
         }
 
+        // Professional only: preview wrapper used to force `.invoice` to min-height:297mm.
+        // After footer refactor, that can push `.page-footer` outside the clipped page in preview.
+        // Keep this override preview-only so export HTML/CSS remains untouched.
+        let professionalPreviewFooterFix: String
+        if s.contains("<div class=\"logo\">invoice</div>") {
+            professionalPreviewFooterFix = """
+            <style id="__pv_pro_footer_fix">
+            .page.__pv_active {
+              display: flex !important;
+              flex-direction: column !important;
+            }
+            .page.__pv_active .invoice {
+              min-height: 0 !important;
+              height: auto !important;
+            }
+            .page.__pv_active .page-footer {
+              position: relative !important;
+              z-index: 6 !important;
+              visibility: visible !important;
+              opacity: 1 !important;
+              padding: 0 20mm !important;
+            }
+            </style>
+            """
+        } else {
+            professionalPreviewFooterFix = ""
+        }
+
         // Elegant only: `__pv` forces `.page.__pv_active { display:block }`, which breaks the
         // template’s flex column and leaves `.page-footer` too high in preview. PDF export does
         // not use this injection, so this restores preview parity with print without changing HTML.
@@ -2762,7 +2790,7 @@ private struct SinglePagePreview: UIViewRepresentable {
             body { background: white !important; }
         }
         </style>
-        \(professionalPolish)\(elegantPreviewPolish)
+        \(professionalPolish)\(professionalPreviewFooterFix)\(elegantPreviewPolish)
         <script>
         var __pvTarget = \(showPageIndex);
         document.addEventListener('DOMContentLoaded', function() {
