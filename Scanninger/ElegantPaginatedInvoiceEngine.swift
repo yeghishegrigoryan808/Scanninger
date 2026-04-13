@@ -19,7 +19,13 @@ enum ElegantPaginatedInvoiceEngine {
 
     private enum M {
         static let pageHeightMm: Double = 297.0
-        static let safetyMm: Double = 5.0
+        static let safetyMm: Double = 3.0
+
+        /// Real reserved footer block height (page number lives here).
+        static let footerHeightMm: Double = 8.0
+
+        /// Extra clearance required below an item row before accepting it on the current page.
+        static let rowFitBufferMm: Double = 3.0
 
         /// Moderately conservative CSS-px → mm conversion.
         /// True value ≈ 25.4/96 (0.265mm); we use 25.4/90 (0.282mm) to absorb
@@ -28,14 +34,19 @@ enum ElegantPaginatedInvoiceEngine {
 
         /// Top accent bar: 14 CSS-px.
         static var topAccentMm: Double { 14.0 * pxMm }
-        /// `.inner` padding — top generous, bottom provides safe footer zone for page number.
+        /// `.inner` padding — top generous, bottom moderate (footer handles bottom safety).
         static let innerPaddingTopMm: Double = 18.0
-        static let innerPaddingBottomMm: Double = 20.0
+        static let innerPaddingBottomMm: Double = 12.0
 
-        /// Usable content height inside `.inner` per page.
+        /// Usable content height inside `.page-inner` per page.
         static var usableHeight: Double {
-            pageHeightMm - topAccentMm - innerPaddingTopMm - innerPaddingBottomMm - safetyMm
+            pageHeightMm - topAccentMm - innerPaddingTopMm - innerPaddingBottomMm - footerHeightMm - safetyMm
         }
+
+        /// Continuation pages (2+) have large bottom decorative gradients/corner art that visually
+        /// encroach on the content box. Subtract this from the fit limit on those pages only so the
+        /// last row clears that zone in export.
+        static let continuationExtraBottomReserveMm: Double = 4.0
 
         // -- Hero (header) ------------------------------------------------
         // business-name 17px + mb16, invoice-title 42px + mb16
@@ -58,10 +69,10 @@ enum ElegantPaginatedInvoiceEngine {
         // -- Items table --------------------------------------------------
         // thead th: padding 14+14, font ~14.4
         static var tableHeaderMm: Double { (28.0 + 14.4) * pxMm }
-        // tbody td: padding 14+14 = 28px chrome per row
-        static var itemRowChromeMm: Double { 29.0 * pxMm }
-        // body text line ~14px * 1.2 effective line-height
-        static var bodyLineMm: Double { 14.0 * 1.2 * pxMm }
+        // tbody td: padding 14+14 = 28px + border + moderate headroom
+        static var itemRowChromeMm: Double { 31.0 * pxMm }
+        // body text line ~14px * 1.3 moderately conservative line-height
+        static var bodyLineMm: Double { 14.0 * 1.3 * pxMm }
 
         // -- Totals (compact card) ----------------------------------------
         // Gap before totals = items-wrap CSS margin-bottom
@@ -80,7 +91,7 @@ enum ElegantPaginatedInvoiceEngine {
         static var notesNewPageChromeMm: Double  { 12.0 * pxMm }
         static var notesLineMm: Double { 13.0 * 1.5 * pxMm }
 
-        static let charsPerLine: Double = 58.0
+        static let charsPerLine: Double = 52.0
     }
 
     // MARK: - Public API
@@ -109,6 +120,12 @@ enum ElegantPaginatedInvoiceEngine {
         var wkTotals  = false
         var wkNotes   = false
         var currentY: Double = 0
+
+        /// Pagination fit limit: first page uses full usable height; continuation pages reserve extra
+        /// bottom space so content does not sit under Elegant’s bottom decorative layer.
+        func fitLimit() -> Double {
+            wkFirst ? limit : (limit - M.continuationExtraBottomReserveMm)
+        }
 
         @discardableResult
         func commitPage() -> Bool {
@@ -154,7 +171,8 @@ enum ElegantPaginatedInvoiceEngine {
             let firstOnPage = wkItems.isEmpty
             let need = firstOnPage ? (thH + rowH) : rowH
 
-            if currentY + need <= limit {
+            let pageLimit = fitLimit()
+            if currentY + need + M.rowFitBufferMm <= pageLimit {
                 if firstOnPage {
                     currentY += thH
                     print("[ElegantPag] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -163,7 +181,7 @@ enum ElegantPaginatedInvoiceEngine {
                 currentY += rowH
                 print("[ElegantPag] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) y=\(f(currentY)) fit=YES")
             } else {
-                print("[ElegantPag] pg\(wkIdx) ITEM[\(i)] need=\(f(need)) avail=\(f(limit - currentY)) → new page")
+                print("[ElegantPag] pg\(wkIdx) ITEM[\(i)] need=\(f(need + M.rowFitBufferMm)) avail=\(f(pageLimit - currentY)) lim=\(f(pageLimit)) → new page")
                 nextPage()
                 currentY += thH
                 print("[ElegantPag] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -177,8 +195,9 @@ enum ElegantPaginatedInvoiceEngine {
         let totalsWithGap = M.totalsGapMm + M.totalsContentMm
         let totalsAlone   = M.totalsContentMm
 
-        print("[ElegantPag] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(limit - currentY))")
-        if currentY + totalsWithGap <= limit {
+        let totalsLimit = fitLimit()
+        print("[ElegantPag] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(totalsLimit - currentY)) lim=\(f(totalsLimit))")
+        if currentY + totalsWithGap <= totalsLimit {
             wkTotals  = true
             currentY += totalsWithGap
             print("[ElegantPag] pg\(wkIdx) TOTALS fit=YES y=\(f(currentY))")
@@ -195,8 +214,9 @@ enum ElegantPaginatedInvoiceEngine {
             let notesSame  = estimateNotesHeight(invoice.additionalNotes, isFirstChild: false)
             let notesAlone = estimateNotesHeight(invoice.additionalNotes, isFirstChild: true)
 
-            print("[ElegantPag] pg\(wkIdx) NOTES? need=\(f(notesSame)) avail=\(f(limit - currentY))")
-            if currentY + notesSame <= limit {
+            let notesLimit = fitLimit()
+            print("[ElegantPag] pg\(wkIdx) NOTES? need=\(f(notesSame)) avail=\(f(notesLimit - currentY)) lim=\(f(notesLimit))")
+            if currentY + notesSame <= notesLimit {
                 wkNotes   = true
                 currentY += notesSame
                 print("[ElegantPag] pg\(wkIdx) NOTES fit=YES y=\(f(currentY))")
@@ -316,8 +336,10 @@ enum ElegantPaginatedInvoiceEngine {
               <div class="top-accent"></div>
               <div class="corner-line-top"></div>
               <div class="corner-line-bottom"></div>
-              <div class="page-number">Page \(pageNum) of \(totalPages)</div>
-              <div class="inner">\(sections)</div>
+              <div class="page-inner">
+                <div class="inner">\(sections)</div>
+              </div>
+              <div class="page-footer">Page \(pageNum) of \(totalPages)</div>
             </div>
             """
         }.joined(separator: "\n")
@@ -514,12 +536,14 @@ enum ElegantPaginatedInvoiceEngine {
 
           .page {
             width: 210mm;
-            min-height: 297mm;
+            height: 297mm;
             margin: 0 auto 24px auto;
             background: var(--white);
             box-shadow: 0 12px 30px rgba(0,0,0,0.08);
             position: relative;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
             page-break-after: always;
             break-after: page;
           }
@@ -533,6 +557,7 @@ enum ElegantPaginatedInvoiceEngine {
 
           .top-accent {
             width: 100%; height: 14px;
+            flex-shrink: 0;
             background: linear-gradient(90deg, var(--accent-dark), var(--accent));
             position: relative; z-index: 3;
           }
@@ -581,12 +606,35 @@ enum ElegantPaginatedInvoiceEngine {
             z-index: 1; pointer-events: none;
           }
 
+          /* ── Page-inner (flex child that holds content) ───────── */
+
+          .page-inner {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            z-index: 2;
+          }
+
+          /* ── Page-footer (reserved footer block for page number) ── */
+
+          .page-footer {
+            flex-shrink: 0;
+            height: \(String(format: "%.0fmm", M.footerHeightMm));
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 18mm;
+            font-size: 12px;
+            font-weight: 600;
+            color: #a1a09d;
+            letter-spacing: 0.04em;
+            z-index: 4;
+          }
+
           /* ── Inner content area ──────────────────────────────── */
 
           .inner {
-            position: relative;
-            z-index: 2;
-            padding: 18mm 18mm 20mm 18mm;
+            padding: 18mm 18mm 12mm 18mm;
           }
 
           /* ── Hero (header) section ────────────────────────────── */
@@ -776,18 +824,6 @@ enum ElegantPaginatedInvoiceEngine {
             line-height: 1.5; white-space: pre-wrap;
           }
 
-          /* ── Page number ─────────────────────────────────────── */
-
-          .page-number {
-            position: absolute;
-            bottom: 10mm; right: 18mm;
-            font-size: 12px; font-weight: 600;
-            color: #a1a09d;
-            letter-spacing: 0.04em;
-            z-index: 4;
-            pointer-events: none;
-          }
-
           /* ── Continuation page tweaks ────────────────────────── */
 
           .page.continuation .items-wrap:first-child,
@@ -805,6 +841,8 @@ enum ElegantPaginatedInvoiceEngine {
               box-shadow: none;
               height: 297mm;
               overflow: hidden;
+              display: flex;
+              flex-direction: column;
             }
           }
         </style>

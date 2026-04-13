@@ -19,19 +19,25 @@ enum ClassicPaginatedInvoiceEngine {
 
     private enum M {
         static let pageHeightMm: Double = 297.0
-        static let safetyMm: Double = 5.0
+        static let safetyMm: Double = 3.0
+
+        /// Real reserved footer block height (page number lives here).
+        static let footerHeightMm: Double = 12.0
+
+        /// Extra clearance required below an item row before accepting it on the current page.
+        static let rowFitBufferMm: Double = 4.0
 
         /// Moderately conservative CSS-px → mm conversion (same as elegant paginated).
         static let pxMm: Double = 25.4 / 90.0
 
-        /// `.inner` padding — top 18mm, bottom 6mm (generous top, reduced bottom).
+        /// `.inner` padding — top 18mm, bottom 20mm.
         /// The subtle accent bar (5px) is position:absolute so it does NOT reduce flow space.
         static let innerPaddingTopMm: Double = 18.0
         static let innerPaddingBottomMm: Double = 20.0
 
-        /// Usable content height inside `.inner` per page.
+        /// Usable content height inside `.page-inner` per page.
         static var usableHeight: Double {
-            pageHeightMm - innerPaddingTopMm - innerPaddingBottomMm - safetyMm
+            pageHeightMm - innerPaddingTopMm - innerPaddingBottomMm - footerHeightMm - safetyMm
         }
 
         // -- Top row (invoice title + invoice box) ----------------------------
@@ -58,10 +64,10 @@ enum ClassicPaginatedInvoiceEngine {
         // -- Items table ------------------------------------------------------
         // thead th: padding 10+10 = 20px chrome + font ~13px
         static var tableHeaderMm: Double { (20.0 + 13.0) * pxMm }
-        // tbody td: padding 10+10 = 20px + 2px border
-        static var itemRowChromeMm: Double { 22.0 * pxMm }
-        // body text ~13px * 1.2 effective line-height
-        static var bodyLineMm: Double { 13.0 * 1.2 * pxMm }
+        // tbody td: padding 10+10 = 20px + 2px border + rounding headroom
+        static var itemRowChromeMm: Double { 26.0 * pxMm }
+        // body text ~13px * 1.35 conservative line-height
+        static var bodyLineMm: Double { 13.0 * 1.35 * pxMm }
 
         // -- Totals table -----------------------------------------------------
         // Gap before totals = items-wrap margin-bottom
@@ -78,7 +84,7 @@ enum ClassicPaginatedInvoiceEngine {
         static var notesNewPageChromeMm: Double  { 12.0 * pxMm }
         static var notesLineMm: Double { 13.0 * 1.5 * pxMm }
 
-        static let charsPerLine: Double = 62.0
+        static let charsPerLine: Double = 50.0
     }
 
     // MARK: - Public API
@@ -148,7 +154,7 @@ enum ClassicPaginatedInvoiceEngine {
             let firstOnPage = wkItems.isEmpty
             let need = firstOnPage ? (thH + rowH) : rowH
 
-            if currentY + need <= limit {
+            if currentY + need + M.rowFitBufferMm <= limit {
                 if firstOnPage {
                     currentY += thH
                 }
@@ -301,8 +307,10 @@ enum ClassicPaginatedInvoiceEngine {
             return """
             <div class="\(cls)">
               <div class="subtle-accent"></div>
-              <div class="page-number">Page \(pageNum) of \(totalPages)</div>
-              <div class="inner">\(sections)</div>
+              <div class="page-inner">
+                <div class="inner">\(sections)</div>
+              </div>
+              <div class="page-footer">Page \(pageNum) of \(totalPages)</div>
             </div>
             """
         }.joined(separator: "\n")
@@ -506,13 +514,15 @@ enum ClassicPaginatedInvoiceEngine {
 
           .page {
             width: 210mm;
-            min-height: 297mm;
+            height: 297mm;
             margin: 0 auto 24px auto;
             background: var(--paper);
             box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             position: relative;
             overflow: hidden;
             border: 1px solid #d9d9d9;
+            display: flex;
+            flex-direction: column;
             page-break-after: always;
             break-after: page;
           }
@@ -533,11 +543,34 @@ enum ClassicPaginatedInvoiceEngine {
             z-index: 3;
           }
 
+          /* ── Page-inner (flex child that holds content) ───────── */
+
+          .page-inner {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            z-index: 2;
+          }
+
+          /* ── Page-footer (reserved footer block for page number) ── */
+
+          .page-footer {
+            flex-shrink: 0;
+            height: \(String(format: "%.0fmm", M.footerHeightMm));
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 16mm;
+            font-size: 12px;
+            font-weight: 600;
+            color: #a1a09d;
+            letter-spacing: 0.04em;
+            z-index: 4;
+          }
+
           /* ── Inner content area ─────────────────────────────── */
 
           .inner {
-            position: relative;
-            z-index: 2;
             padding: 18mm 16mm 20mm 16mm;
           }
 
@@ -755,18 +788,6 @@ enum ClassicPaginatedInvoiceEngine {
             line-height: 1.5; white-space: pre-wrap;
           }
 
-          /* ── Page number ────────────────────────────────────── */
-
-          .page-number {
-            position: absolute;
-            bottom: 10mm; right: 16mm;
-            font-size: 12px; font-weight: 600;
-            color: #a1a09d;
-            letter-spacing: 0.04em;
-            z-index: 4;
-            pointer-events: none;
-          }
-
           /* ── Continuation page tweaks ───────────────────────── */
 
           .page.continuation .items-wrap:first-child,
@@ -785,6 +806,8 @@ enum ClassicPaginatedInvoiceEngine {
               border: none;
               height: 297mm;
               overflow: hidden;
+              display: flex;
+              flex-direction: column;
             }
           }
         </style>

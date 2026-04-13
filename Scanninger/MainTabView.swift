@@ -2731,6 +2731,23 @@ private struct SinglePagePreview: UIViewRepresentable {
             professionalPolish = ""
         }
 
+        // Elegant only: `__pv` forces `.page.__pv_active { display:block }`, which breaks the
+        // template’s flex column and leaves `.page-footer` too high in preview. PDF export does
+        // not use this injection, so this restores preview parity with print without changing HTML.
+        let elegantPreviewPolish: String
+        if s.contains("top-accent") {
+            elegantPreviewPolish = """
+            <style id="__pv_elegant">
+            .page.__pv_active {
+              display: flex !important;
+              flex-direction: column !important;
+            }
+            </style>
+            """
+        } else {
+            elegantPreviewPolish = ""
+        }
+
         let inject = """
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <style id="__pv">
@@ -2745,7 +2762,7 @@ private struct SinglePagePreview: UIViewRepresentable {
             body { background: white !important; }
         }
         </style>
-        \(professionalPolish)
+        \(professionalPolish)\(elegantPreviewPolish)
         <script>
         var __pvTarget = \(showPageIndex);
         document.addEventListener('DOMContentLoaded', function() {
