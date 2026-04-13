@@ -22,10 +22,19 @@ enum ElegantPaginatedInvoiceEngine {
         static let safetyMm: Double = 3.0
 
         /// Real reserved footer block height (page number lives here).
-        static let footerHeightMm: Double = 8.0
+        static let footerHeightMm: Double = 12.0
 
         /// Extra clearance required below an item row before accepting it on the current page.
         static let rowFitBufferMm: Double = 3.0
+
+        static let notesFitBufferMm: Double = 0.0
+        static let trailingFitSlackMm: Double = 24.0
+        static let continuationRowFitSlackMm: Double = 6.0
+        static let continuationRowGuardMm: Double = 8.0
+
+        /// Small recovery for first-page header/bill-to overestimation when deciding
+        /// whether the first table block can start on page 1.
+        static let firstPageTableStartSlackMm: Double = 14.0
 
         /// Moderately conservative CSS-px → mm conversion.
         /// True value ≈ 25.4/96 (0.265mm); we use 25.4/90 (0.282mm) to absorb
@@ -42,11 +51,6 @@ enum ElegantPaginatedInvoiceEngine {
         static var usableHeight: Double {
             pageHeightMm - topAccentMm - innerPaddingTopMm - innerPaddingBottomMm - footerHeightMm - safetyMm
         }
-
-        /// Continuation pages (2+) have large bottom decorative gradients/corner art that visually
-        /// encroach on the content box. Subtract this from the fit limit on those pages only so the
-        /// last row clears that zone in export.
-        static let continuationExtraBottomReserveMm: Double = 4.0
 
         // -- Hero (header) ------------------------------------------------
         // business-name 17px + mb16, invoice-title 42px + mb16
@@ -69,10 +73,10 @@ enum ElegantPaginatedInvoiceEngine {
         // -- Items table --------------------------------------------------
         // thead th: padding 14+14, font ~14.4
         static var tableHeaderMm: Double { (28.0 + 14.4) * pxMm }
-        // tbody td: padding 14+14 = 28px + border + moderate headroom
-        static var itemRowChromeMm: Double { 31.0 * pxMm }
-        // body text line ~14px * 1.3 moderately conservative line-height
-        static var bodyLineMm: Double { 14.0 * 1.3 * pxMm }
+        static var itemRowChromeMm: Double { 35.0 * pxMm }
+        static var titleLineMm: Double { 14.0 * 1.25 * pxMm }
+        static var detailLineMm: Double { 12.5 * 1.55 * pxMm }
+        static var bodyLineMm: Double { titleLineMm }
 
         // -- Totals (compact card) ----------------------------------------
         // Gap before totals = items-wrap CSS margin-bottom
@@ -91,6 +95,7 @@ enum ElegantPaginatedInvoiceEngine {
         static var notesNewPageChromeMm: Double  { 12.0 * pxMm }
         static var notesLineMm: Double { 13.0 * 1.5 * pxMm }
 
+        static let notesCharsPerLine: Double = 104.0
         static let charsPerLine: Double = 52.0
     }
 
@@ -120,12 +125,6 @@ enum ElegantPaginatedInvoiceEngine {
         var wkTotals  = false
         var wkNotes   = false
         var currentY: Double = 0
-
-        /// Pagination fit limit: first page uses full usable height; continuation pages reserve extra
-        /// bottom space so content does not sit under Elegant’s bottom decorative layer.
-        func fitLimit() -> Double {
-            wkFirst ? limit : (limit - M.continuationExtraBottomReserveMm)
-        }
 
         @discardableResult
         func commitPage() -> Bool {
@@ -171,8 +170,12 @@ enum ElegantPaginatedInvoiceEngine {
             let firstOnPage = wkItems.isEmpty
             let need = firstOnPage ? (thH + rowH) : rowH
 
-            let pageLimit = fitLimit()
-            if currentY + need + M.rowFitBufferMm <= pageLimit {
+            let isContinuationPage = !wkFirst && !wkHeader && !wkParties
+            let rowSlack = isContinuationPage ? M.continuationRowFitSlackMm : 0.0
+            let rowGuard = isContinuationPage ? M.continuationRowGuardMm : 0.0
+            let firstPageStartSlack = (wkFirst && firstOnPage) ? M.firstPageTableStartSlackMm : 0.0
+
+            if currentY + need + M.rowFitBufferMm <= limit + rowSlack + firstPageStartSlack - rowGuard {
                 if firstOnPage {
                     currentY += thH
                     print("[ElegantPag] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -181,7 +184,7 @@ enum ElegantPaginatedInvoiceEngine {
                 currentY += rowH
                 print("[ElegantPag] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) y=\(f(currentY)) fit=YES")
             } else {
-                print("[ElegantPag] pg\(wkIdx) ITEM[\(i)] need=\(f(need + M.rowFitBufferMm)) avail=\(f(pageLimit - currentY)) lim=\(f(pageLimit)) → new page")
+                print("[ElegantPag] pg\(wkIdx) ITEM[\(i)] need=\(f(need + M.rowFitBufferMm)) avail=\(f(limit + rowSlack + firstPageStartSlack - rowGuard - currentY)) slack=\(f(rowSlack)) firstPageStartSlack=\(f(firstPageStartSlack)) guard=\(f(rowGuard)) → new page")
                 nextPage()
                 currentY += thH
                 print("[ElegantPag] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
@@ -194,10 +197,10 @@ enum ElegantPaginatedInvoiceEngine {
         // ── 4. Totals ──
         let totalsWithGap = M.totalsGapMm + M.totalsContentMm
         let totalsAlone   = M.totalsContentMm
+        let trailingSlack = (wkHeader || wkParties || !wkItems.isEmpty) ? M.trailingFitSlackMm : 0.0
 
-        let totalsLimit = fitLimit()
-        print("[ElegantPag] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(totalsLimit - currentY)) lim=\(f(totalsLimit))")
-        if currentY + totalsWithGap <= totalsLimit {
+        print("[ElegantPag] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(limit + trailingSlack - currentY)) slack=\(f(trailingSlack))")
+        if currentY + totalsWithGap <= limit + trailingSlack {
             wkTotals  = true
             currentY += totalsWithGap
             print("[ElegantPag] pg\(wkIdx) TOTALS fit=YES y=\(f(currentY))")
@@ -213,10 +216,11 @@ enum ElegantPaginatedInvoiceEngine {
         if hasNotes {
             let notesSame  = estimateNotesHeight(invoice.additionalNotes, isFirstChild: false)
             let notesAlone = estimateNotesHeight(invoice.additionalNotes, isFirstChild: true)
+            let notesNeed  = notesSame + M.notesFitBufferMm
+            let notesSlack = (wkHeader || wkParties || !wkItems.isEmpty) ? M.trailingFitSlackMm : 0.0
 
-            let notesLimit = fitLimit()
-            print("[ElegantPag] pg\(wkIdx) NOTES? need=\(f(notesSame)) avail=\(f(notesLimit - currentY)) lim=\(f(notesLimit))")
-            if currentY + notesSame <= notesLimit {
+            print("[ElegantPag] pg\(wkIdx) NOTES? need=\(f(notesNeed)) avail=\(f(limit + notesSlack - currentY)) slack=\(f(notesSlack))")
+            if currentY + notesNeed <= limit + notesSlack {
                 wkNotes   = true
                 currentY += notesSame
                 print("[ElegantPag] pg\(wkIdx) NOTES fit=YES y=\(f(currentY))")
@@ -276,15 +280,25 @@ enum ElegantPaginatedInvoiceEngine {
     }
 
     private static func estimateItemRowHeight(item: LineItemModel) -> Double {
-        let lines = estimatedLines(item.title, minimum: 1)
-            + estimatedLines(item.details, minimum: 0)
-        return M.itemRowChromeMm + lines * M.bodyLineMm
+        let titleLines = estimatedLines(item.title, minimum: 1)
+        let detailLines = estimatedLines(item.details, minimum: 0)
+        return M.itemRowChromeMm
+            + titleLines * M.titleLineMm
+            + detailLines * M.detailLineMm
     }
 
     private static func estimateNotesHeight(_ notes: String, isFirstChild: Bool) -> Double {
-        let lines  = estimatedLines(notes, minimum: 1)
+        let lines  = estimatedNotesLines(notes, minimum: 1)
         let chrome = isFirstChild ? M.notesNewPageChromeMm : M.notesSamePageChromeMm
         return chrome + lines * M.notesLineMm
+    }
+
+    private static func estimatedNotesLines(_ text: String, minimum: Double) -> Double {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return minimum }
+        return max(minimum, trimmed.components(separatedBy: "\n").reduce(0.0) { sum, line in
+            sum + max(1, ceil(Double(max(line.count, 1)) / M.notesCharsPerLine))
+        })
     }
 
     private static func estimatedLines(_ text: String, minimum: Double) -> Double {
