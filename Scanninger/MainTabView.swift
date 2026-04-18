@@ -999,6 +999,18 @@ struct PeriodPickerView: View {
                             }
                         }
                 }
+
+                if periodStart != nil || periodEnd != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            periodStart = nil
+                            periodEnd = nil
+                            dismiss()
+                        } label: {
+                            Label("Clear Period", systemImage: "xmark.circle")
+                        }
+                    }
+                }
             }
             .navigationTitle("Invoice Period")
             .toolbar {
@@ -1180,7 +1192,7 @@ struct CreateInvoiceView: View {
                         showPeriodPicker = true
                     } label: {
                         HStack {
-                            Text("Invoice Period (optional)")
+                            Text("Invoice Period")
                             Spacer()
                             if let start = periodStart, let end = periodEnd {
                                 Text(formatPeriodRange(start: start, end: end))
@@ -1345,6 +1357,8 @@ struct CreateInvoiceView: View {
             }
             .sheet(isPresented: $showPeriodPicker) {
                 PeriodPickerView(periodStart: $periodStart, periodEnd: $periodEnd)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
             .alert("Delete item?", isPresented: $showDeleteItemAlert) {
                 Button("Cancel", role: .cancel) {
@@ -1645,7 +1659,7 @@ struct EditInvoiceView: View {
                         showPeriodPicker = true
                     } label: {
                         HStack {
-                            Text("Invoice Period (optional)")
+                            Text("Invoice Period")
                             Spacer()
                             if let start = periodStart, let end = periodEnd {
                                 Text(formatPeriodRange(start: start, end: end))
@@ -1774,6 +1788,8 @@ struct EditInvoiceView: View {
             }
             .sheet(isPresented: $showPeriodPicker) {
                 PeriodPickerView(periodStart: $periodStart, periodEnd: $periodEnd)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
             .alert("Delete item?", isPresented: $showDeleteItemAlert) {
                 Button("Cancel", role: .cancel) {
