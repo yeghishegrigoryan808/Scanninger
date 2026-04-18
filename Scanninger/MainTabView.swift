@@ -2783,10 +2783,16 @@ private struct SinglePagePreview: UIViewRepresentable {
         html, body { margin: 0; padding: 0; overflow: hidden; background: #e8e8ed !important; width: 100%; height: 100%; }
         .invoice-document { display: contents !important; }
         .page { display: none !important; }
-        .page.__pv_active { display: block !important; }
+        .page.__pv_active {
+            display: flex !important;
+            flex-direction: column !important;
+        }
         @media print {
             .invoice-document { display: block !important; }
-            .page { display: block !important; }
+            .page {
+                display: flex !important;
+                flex-direction: column !important;
+            }
             body { background: white !important; }
         }
         </style>

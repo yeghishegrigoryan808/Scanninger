@@ -25,7 +25,15 @@ enum ClassicPaginatedInvoiceEngine {
         static let footerHeightMm: Double = 12.0
 
         /// Extra clearance required below an item row before accepting it on the current page.
-        static let rowFitBufferMm: Double = 4.0
+        static let rowFitBufferMm: Double = 3.0
+
+        static let notesFitBufferMm: Double = 0.0
+        static let trailingFitSlackMm: Double = 24.0
+        static let continuationRowFitSlackMm: Double = 6.0
+        static let continuationRowGuardMm: Double = 8.0
+
+        /// Recovery for first-page header/parties overestimation when placing the first table block.
+        static let firstPageTableStartSlackMm: Double = 14.0
 
         /// Moderately conservative CSS-px → mm conversion (same as elegant paginated).
         static let pxMm: Double = 25.4 / 90.0
@@ -57,17 +65,14 @@ enum ClassicPaginatedInvoiceEngine {
         static var partyLineMm: Double { 13.0 * 1.6 * pxMm }
         // party-row margin-bottom
         static let partyRowGapMm: Double = 12.0
-        // period-block: font 13px * ~1.4 line-height + 8mm margin-bottom
-        static var periodLineMm: Double { 13.0 * 1.4 * pxMm }
-        static let periodGapMm: Double = 8.0
-
         // -- Items table ------------------------------------------------------
         // thead th: padding 10+10 = 20px chrome + font ~13px
         static var tableHeaderMm: Double { (20.0 + 13.0) * pxMm }
-        // tbody td: padding 10+10 = 20px + 2px border + rounding headroom
-        static var itemRowChromeMm: Double { 26.0 * pxMm }
-        // body text ~13px * 1.35 conservative line-height
-        static var bodyLineMm: Double { 13.0 * 1.35 * pxMm }
+        // tbody td: padding + 2px borders; title vs detail lines split (matches .item-title / .item-desc).
+        static var itemRowChromeMm: Double { 33.0 * pxMm }
+        static var titleLineMm: Double { 13.0 * 1.25 * pxMm }
+        static var detailLineMm: Double { 12.5 * 1.55 * pxMm }
+        static var bodyLineMm: Double { titleLineMm }
 
         // -- Totals table -----------------------------------------------------
         // Gap before totals = items-wrap margin-bottom
@@ -84,7 +89,8 @@ enum ClassicPaginatedInvoiceEngine {
         static var notesNewPageChromeMm: Double  { 12.0 * pxMm }
         static var notesLineMm: Double { 13.0 * 1.5 * pxMm }
 
-        static let charsPerLine: Double = 50.0
+        static let notesCharsPerLine: Double = 104.0
+        static let charsPerLine: Double = 52.0
     }
 
     // MARK: - Public API
@@ -118,6 +124,7 @@ enum ClassicPaginatedInvoiceEngine {
         func commitPage() -> Bool {
             let has = wkHeader || wkParties || !wkItems.isEmpty || wkTotals || wkNotes
             if has {
+                print("[ClassicPag] COMMIT pg\(wkIdx): hdr=\(wkHeader) parties=\(wkParties) items=\(wkItems.count) totals=\(wkTotals) notes=\(wkNotes) y=\(f(currentY))")
                 committed.append(PaginationTestRenderPage(
                     pageIndex: wkIdx, isFirstPage: wkFirst, isLastPage: false,
                     showHeader: wkHeader, showParties: wkParties,
@@ -137,62 +144,86 @@ enum ClassicPaginatedInvoiceEngine {
             wkTotals  = false
             wkNotes   = false
             currentY  = 0
+            print("[ClassicPag] NEW pg\(wkIdx) currentY=0")
         }
 
         // ── 1. Header ──
         currentY += headerH
+        print("[ClassicPag] pg\(wkIdx) HEADER h=\(f(headerH)) y=\(f(currentY))")
 
         // ── 2. Parties (first page only) ──
         wkParties = true
         currentY += partiesH
+        print("[ClassicPag] pg\(wkIdx) PARTIES h=\(f(partiesH)) y=\(f(currentY))")
 
         // ── 3. Items ──
         let thH = M.tableHeaderMm
 
-        for (_, item) in allItems.enumerated() {
+        for (i, item) in allItems.enumerated() {
             let rowH = estimateItemRowHeight(item: item)
             let firstOnPage = wkItems.isEmpty
             let need = firstOnPage ? (thH + rowH) : rowH
 
-            if currentY + need + M.rowFitBufferMm <= limit {
+            let isContinuationPage = !wkFirst && !wkHeader && !wkParties
+            let rowSlack = isContinuationPage ? M.continuationRowFitSlackMm : 0.0
+            let rowGuard = isContinuationPage ? M.continuationRowGuardMm : 0.0
+            let firstPageStartSlack = (wkFirst && firstOnPage) ? M.firstPageTableStartSlackMm : 0.0
+
+            if currentY + need + M.rowFitBufferMm <= limit + rowSlack + firstPageStartSlack - rowGuard {
                 if firstOnPage {
                     currentY += thH
+                    print("[ClassicPag] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
                 }
                 wkItems.append(item)
                 currentY += rowH
+                print("[ClassicPag] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) y=\(f(currentY)) fit=YES")
             } else {
+                print("[ClassicPag] pg\(wkIdx) ITEM[\(i)] need=\(f(need + M.rowFitBufferMm)) avail=\(f(limit + rowSlack + firstPageStartSlack - rowGuard - currentY)) slack=\(f(rowSlack)) firstPageStartSlack=\(f(firstPageStartSlack)) guard=\(f(rowGuard)) → new page")
                 nextPage()
                 currentY += thH
+                print("[ClassicPag] pg\(wkIdx) TBL_HDR h=\(f(thH)) y=\(f(currentY))")
                 wkItems.append(item)
                 currentY += rowH
+                print("[ClassicPag] pg\(wkIdx) ITEM[\(i)] h=\(f(rowH)) y=\(f(currentY))")
             }
         }
 
         // ── 4. Totals ──
         let totalsWithGap = M.totalsGapMm + M.totalsContentMm
         let totalsAlone   = M.totalsContentMm
+        let trailingSlack = (wkHeader || wkParties || !wkItems.isEmpty) ? M.trailingFitSlackMm : 0.0
 
-        if currentY + totalsWithGap <= limit {
+        print("[ClassicPag] pg\(wkIdx) TOTALS? need=\(f(totalsWithGap)) avail=\(f(limit + trailingSlack - currentY)) slack=\(f(trailingSlack))")
+        if currentY + totalsWithGap <= limit + trailingSlack {
             wkTotals  = true
             currentY += totalsWithGap
+            print("[ClassicPag] pg\(wkIdx) TOTALS fit=YES y=\(f(currentY))")
         } else {
+            print("[ClassicPag] pg\(wkIdx) TOTALS fit=NO → new page")
             nextPage()
             wkTotals  = true
             currentY += totalsAlone
+            print("[ClassicPag] pg\(wkIdx) TOTALS h=\(f(totalsAlone)) y=\(f(currentY))")
         }
 
         // ── 5. Notes ──
         if hasNotes {
             let notesSame  = estimateNotesHeight(invoice.additionalNotes, isFirstChild: false)
             let notesAlone = estimateNotesHeight(invoice.additionalNotes, isFirstChild: true)
+            let notesNeed  = notesSame + M.notesFitBufferMm
+            let notesSlack = (wkHeader || wkParties || !wkItems.isEmpty) ? M.trailingFitSlackMm : 0.0
 
-            if currentY + notesSame <= limit {
+            print("[ClassicPag] pg\(wkIdx) NOTES? need=\(f(notesNeed)) avail=\(f(limit + notesSlack - currentY)) slack=\(f(notesSlack))")
+            if currentY + notesNeed <= limit + notesSlack {
                 wkNotes   = true
                 currentY += notesSame
+                print("[ClassicPag] pg\(wkIdx) NOTES fit=YES y=\(f(currentY))")
             } else {
+                print("[ClassicPag] pg\(wkIdx) NOTES fit=NO → new page")
                 nextPage()
                 wkNotes   = true
                 currentY += notesAlone
+                print("[ClassicPag] pg\(wkIdx) NOTES h=\(f(notesAlone)) y=\(f(currentY))")
             }
         }
 
@@ -212,6 +243,10 @@ enum ClassicPaginatedInvoiceEngine {
             )
         }
 
+        print("[ClassicPag] RESULT: \(pages.count) page(s), usable=\(f(limit))mm")
+        for (i, pg) in pages.enumerated() {
+            print("[ClassicPag]   pg\(i): hdr=\(pg.showHeader) parties=\(pg.showParties) items=\(pg.itemRows.count) totals=\(pg.showTotals) notes=\(pg.showNotes) first=\(pg.isFirstPage) last=\(pg.isLastPage)")
+        }
         return PaginationTestResult(pages: pages)
     }
 
@@ -239,26 +274,29 @@ enum ClassicPaginatedInvoiceEngine {
             + estimatedLines(invoice.clientTaxId, minimum: 0)
         let rightH = M.partyChromeMm + clientLines * M.partyLineMm
 
-        var h = max(leftH, rightH) + M.partyRowGapMm
-
-        // Period block (rendered after parties when present)
-        if invoice.periodStart != nil && invoice.periodEnd != nil {
-            h += M.periodLineMm + M.periodGapMm
-        }
-
-        return h
+        return max(leftH, rightH) + M.partyRowGapMm
     }
 
     private static func estimateItemRowHeight(item: LineItemModel) -> Double {
-        let lines = estimatedLines(item.title, minimum: 1)
-            + estimatedLines(item.details, minimum: 0)
-        return M.itemRowChromeMm + lines * M.bodyLineMm
+        let titleLines = estimatedLines(item.title, minimum: 1)
+        let detailLines = estimatedLines(item.details, minimum: 0)
+        return M.itemRowChromeMm
+            + titleLines * M.titleLineMm
+            + detailLines * M.detailLineMm
     }
 
     private static func estimateNotesHeight(_ notes: String, isFirstChild: Bool) -> Double {
-        let lines  = estimatedLines(notes, minimum: 1)
+        let lines  = estimatedNotesLines(notes, minimum: 1)
         let chrome = isFirstChild ? M.notesNewPageChromeMm : M.notesSamePageChromeMm
         return chrome + lines * M.notesLineMm
+    }
+
+    private static func estimatedNotesLines(_ text: String, minimum: Double) -> Double {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return minimum }
+        return max(minimum, trimmed.components(separatedBy: "\n").reduce(0.0) { sum, line in
+            sum + max(1, ceil(Double(max(line.count, 1)) / M.notesCharsPerLine))
+        })
     }
 
     private static func estimatedLines(_ text: String, minimum: Double) -> Double {
@@ -268,6 +306,8 @@ enum ClassicPaginatedInvoiceEngine {
             sum + max(1, ceil(Double(max(line.count, 1)) / M.charsPerLine))
         })
     }
+
+    private static func f(_ v: Double) -> String { String(format: "%.1f", v) }
 
     // MARK: - HTML Generation
 
@@ -290,7 +330,6 @@ enum ClassicPaginatedInvoiceEngine {
             }
             if page.showParties {
                 sections += partyRowHTML(invoice: invoice)
-                sections += periodHTML(invoice: invoice)
             }
             if !page.itemRows.isEmpty {
                 sections += itemsTableHTML(items: page.itemRows, cc: cc)
@@ -385,15 +424,7 @@ enum ClassicPaginatedInvoiceEngine {
         if !p.isEmpty { parts.append(esc(p)) }
         let t = taxId.trimmingCharacters(in: .whitespacesAndNewlines)
         if !t.isEmpty { parts.append("Tax ID: \(esc(t))") }
-        return parts.joined(separator: "<br>")
-    }
-
-    private static func periodHTML(invoice: InvoiceModel) -> String {
-        guard let s = invoice.periodStart, let e = invoice.periodEnd else { return "" }
-        let pf = DateFormatter(); pf.dateFormat = "MMM d, yyyy"
-        return """
-        <div class="period-block">Period: \(esc(pf.string(from: s))) – \(esc(pf.string(from: e)))</div>
-        """
+        return parts.map { "<div class=\"party-line\">\($0)</div>" }.joined(separator: "\n")
     }
 
     private static func itemsTableHTML(items: [LineItemModel], cc: String) -> String {
@@ -560,7 +591,7 @@ enum ClassicPaginatedInvoiceEngine {
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            padding: 0 16mm;
+            padding: 0 18mm;
             font-size: 12px;
             font-weight: 600;
             color: #a1a09d;
@@ -636,12 +667,15 @@ enum ClassicPaginatedInvoiceEngine {
 
           .party-row {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: 14mm;
             margin-bottom: 12mm;
+            align-items: start;
           }
 
           .party-section {
+            min-width: 0;
+            max-width: 100%;
             min-height: 80px;
           }
 
@@ -658,22 +692,28 @@ enum ClassicPaginatedInvoiceEngine {
             font-size: 16px;
             font-weight: 800;
             margin-bottom: 8px;
+            max-width: 100%;
+            overflow-wrap: break-word;
+            word-break: break-word;
           }
 
           .party-lines {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35em;
             font-size: 13px;
             line-height: 1.6;
             color: #374151;
-            white-space: pre-line;
+            min-width: 0;
+            max-width: 100%;
           }
 
-          /* ── Period block ────────────────────────────────────── */
-
-          .period-block {
-            margin: 0 0 8mm 0;
-            font-size: 13px;
-            font-weight: 600;
-            color: #111111;
+          .party-line {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            overflow-wrap: break-word;
+            word-break: break-word;
           }
 
           /* ── Items table ────────────────────────────────────── */
@@ -717,12 +757,21 @@ enum ClassicPaginatedInvoiceEngine {
             font-weight: 800;
             margin-bottom: 4px;
             color: #111111;
+            line-height: 1.25;
           }
 
           .item-desc {
-            color: var(--muted);
+            display: block;
+            font-size: 12.5px;
             line-height: 1.55;
+            color: var(--muted);
             white-space: pre-line;
+            overflow-wrap: break-word;
+            word-break: break-word;
+          }
+
+          table.invoice-table td:first-child {
+            min-width: 0;
           }
 
           .num {
