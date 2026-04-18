@@ -121,6 +121,24 @@ private struct ProfileFormAddressEditor: View {
     }
 }
 
+/// Title + "* Required" for client/business information `Section` headers (hint sits with the section title, not in the grouped field card).
+private struct ProfileFormInformationSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+            Spacer()
+            Text("* Required")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
 // MARK: - Invoice form additional notes (multiline)
 
 /// Same `GrowingTextView` stack as profile Address: true newlines, paste preserves breaks, height grows with content.
@@ -3875,21 +3893,23 @@ struct CreateBusinessProfileView: View {
                     }
                 }
                 
-                Section("Business Information") {
-                    TextField("Business Name", text: $name)
+                Section {
+                    TextField("Business Name *", text: $name)
                     ProfileFormAddressEditor(placeholder: "Address", text: $address)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
-                    TextField("Tax ID (optional)", text: $taxId)
+                    TextField("Tax ID", text: $taxId)
                     
                     if isDuplicateName {
                         Text("An active business profile with this name already exists.")
                             .font(.caption)
                             .foregroundColor(.red)
                     }
+                } header: {
+                    ProfileFormInformationSectionHeader(title: "Business Information")
                 }
             }
             .onChange(of: name) { _, _ in
@@ -4038,21 +4058,23 @@ struct EditBusinessProfileView: View {
                     }
                 }
                 
-                Section("Business Information") {
-                    TextField("Business Name", text: $name)
+                Section {
+                    TextField("Business Name *", text: $name)
                     ProfileFormAddressEditor(placeholder: "Address", text: $address)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
-                    TextField("Tax ID (optional)", text: $taxId)
+                    TextField("Tax ID", text: $taxId)
                     
                     if isDuplicateName {
                         Text("An active business profile with this name already exists.")
                             .font(.caption)
                             .foregroundColor(.red)
                     }
+                } header: {
+                    ProfileFormInformationSectionHeader(title: "Business Information")
                 }
             }
             .onChange(of: name) { _, _ in
@@ -4196,21 +4218,23 @@ struct CreateClientView: View {
                     }
                 }
                 
-                Section("Client Information") {
-                    TextField("Name", text: $name)
-                    ProfileFormAddressEditor(placeholder: "Address (optional)", text: $address)
-                    TextField("Phone (optional)", text: $phone)
+                Section {
+                    TextField("Name *", text: $name)
+                    ProfileFormAddressEditor(placeholder: "Address", text: $address)
+                    TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
-                    TextField("Email (optional)", text: $email)
+                    TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
-                    TextField("Tax ID (optional)", text: $taxId)
+                    TextField("Tax ID", text: $taxId)
                     
                     if isDuplicateName {
                         Text("An active client with this name already exists.")
                             .font(.caption)
                             .foregroundColor(.red)
                     }
+                } header: {
+                    ProfileFormInformationSectionHeader(title: "Client Information")
                 }
             }
             .onChange(of: name) { _, _ in
@@ -4361,21 +4385,23 @@ struct EditClientView: View {
                     }
                 }
                 
-                Section("Client Information") {
-                    TextField("Name", text: $name)
-                    ProfileFormAddressEditor(placeholder: "Address (optional)", text: $address)
-                    TextField("Phone (optional)", text: $phone)
+                Section {
+                    TextField("Name *", text: $name)
+                    ProfileFormAddressEditor(placeholder: "Address", text: $address)
+                    TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
-                    TextField("Email (optional)", text: $email)
+                    TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .autocapitalization(.none)
-                    TextField("Tax ID (optional)", text: $taxId)
+                    TextField("Tax ID", text: $taxId)
                     
                     if isDuplicateName {
                         Text("An active client with this name already exists.")
                             .font(.caption)
                             .foregroundColor(.red)
                     }
+                } header: {
+                    ProfileFormInformationSectionHeader(title: "Client Information")
                 }
             }
             .onChange(of: name) { _, _ in
