@@ -5503,6 +5503,8 @@ struct ReportsView: View {
             }
             .sheet(isPresented: $showCustomRangePicker) {
                 CustomRangePickerView(startDate: $customStartDate, endDate: $customEndDate)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showClientInvoices) {
                 if let clientName = selectedClient {
@@ -5540,20 +5542,32 @@ struct CustomRangePickerView: View {
     @Binding var startDate: Date
     @Binding var endDate: Date
     
+    @State private var draftStartDate: Date
+    @State private var draftEndDate: Date
+    
+    init(startDate: Binding<Date>, endDate: Binding<Date>) {
+        self._startDate = startDate
+        self._endDate = endDate
+        let start = startDate.wrappedValue
+        let end = endDate.wrappedValue
+        _draftStartDate = State(initialValue: start)
+        _draftEndDate = State(initialValue: end >= start ? end : start)
+    }
+    
     var body: some View {
         NavigationStack {
             Form {
                 Section("Start Date") {
-                    DatePicker("Start", selection: $startDate, displayedComponents: .date)
+                    DatePicker("Start", selection: $draftStartDate, displayedComponents: .date)
                 }
                 
                 Section("End Date") {
-                    DatePicker("End", selection: $endDate, displayedComponents: .date)
-                        .onChange(of: startDate) { oldValue, newValue in
-                            if endDate < newValue {
-                                endDate = newValue
-                            }
-                        }
+                    DatePicker("End", selection: $draftEndDate, displayedComponents: .date)
+                }
+            }
+            .onChange(of: draftStartDate) { oldValue, newValue in
+                if draftEndDate < newValue {
+                    draftEndDate = newValue
                 }
             }
             .navigationTitle("Custom Range")
@@ -5566,6 +5580,8 @@ struct CustomRangePickerView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
+                        startDate = draftStartDate
+                        endDate = draftEndDate >= draftStartDate ? draftEndDate : draftStartDate
                         dismiss()
                     }
                 }
