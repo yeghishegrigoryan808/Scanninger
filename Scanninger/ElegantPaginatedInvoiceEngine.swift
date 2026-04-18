@@ -655,8 +655,8 @@ enum ElegantPaginatedInvoiceEngine {
 
           .hero {
             display: grid;
-            grid-template-columns: 1.2fr 0.8fr;
-            gap: 16mm;
+            grid-template-columns: 1.05fr 0.95fr;
+            gap: 12mm;
             align-items: start;
             margin-bottom: 10mm;
           }
@@ -696,6 +696,7 @@ enum ElegantPaginatedInvoiceEngine {
 
           .meta-value {
             color: #111827; font-weight: 700; text-align: right;
+            white-space: nowrap;
           }
 
           /* ── Bill-to section ──────────────────────────────────── */
