@@ -527,17 +527,7 @@ func makeReportBusinessGroups(from invoices: [InvoiceModel]) -> [ReportBusinessG
 
 // MARK: - Invoice Duplication Helper
 func duplicateInvoice(_ invoice: InvoiceModel, modelContext: ModelContext, allInvoices: [InvoiceModel]) -> InvoiceModel {
-    // Generate next invoice number
-    let maxNumber = allInvoices.compactMap { inv -> Int? in
-        let components = inv.number.components(separatedBy: "-")
-        if components.count == 2, let number = Int(components[1]) {
-            return number
-        }
-        return nil
-    }.max() ?? 0
-    
-    let nextNumber = maxNumber + 1
-    let newInvoiceNumber = String(format: "INV-%04d", nextNumber)
+    let newInvoiceNumber = nextSequentialInvoiceNumber(allInvoices: allInvoices)
     
     // Deep copy line items (preserve user order via sortOrder)
     let newLineItems = LineItemModel.sortedLineItems(invoice.items).enumerated().map { index, item in
@@ -847,16 +837,7 @@ struct InvoicesView: View {
     }
     
     private func generateNextInvoiceNumber() -> String {
-        let maxNumber = allInvoices.compactMap { invoice -> Int? in
-            let components = invoice.number.components(separatedBy: "-")
-            if components.count == 2, let number = Int(components[1]) {
-                return number
-            }
-            return nil
-        }.max() ?? 0
-        
-        let nextNumber = maxNumber + 1
-        return String(format: "INV-%04d", nextNumber)
+        nextSequentialInvoiceNumber(allInvoices: allInvoices)
     }
     
     private func deleteInvoice(_ invoice: InvoiceModel) {
@@ -1050,6 +1031,75 @@ struct PeriodPickerView: View {
     }
 }
 
+// MARK: - Invoice defaults (Settings + new invoices)
+
+private enum AppInvoiceDefaults {
+    static let currencyKey = "defaultInvoiceCurrency"
+    static let taxPercentKey = "defaultInvoiceTaxPercent"
+    static let paymentTermsKey = "defaultInvoicePaymentTerms"
+    static let numberPrefixKey = "defaultInvoiceNumberPrefix"
+}
+
+/// Single source for currency pickers (Settings + create/edit invoice): same codes, order, symbols, and `\(code) (\(symbol))` labels.
+private let invoiceCurrencyOptions: [(code: String, symbol: String)] = [
+    ("USD", "$"),
+    ("EUR", "€"),
+    ("GBP", "£"),
+    ("RUB", "₽"),
+    ("AMD", "֏")
+]
+
+private enum InvoicePaymentTermsSetting: String, CaseIterable, Identifiable {
+    case dueOnReceipt = "due_receipt"
+    case net7 = "net7"
+    case net30 = "net30"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dueOnReceipt: return "Due on receipt"
+        case .net7: return "Net 7"
+        case .net30: return "Net 30"
+        }
+    }
+
+    static func fromStored(_ raw: String?) -> InvoicePaymentTermsSetting {
+        guard let raw, let v = InvoicePaymentTermsSetting(rawValue: raw) else {
+            return .dueOnReceipt
+        }
+        return v
+    }
+
+    func dueDate(from issueDate: Date) -> Date {
+        switch self {
+        case .dueOnReceipt:
+            return issueDate
+        case .net7:
+            return Calendar.current.date(byAdding: .day, value: 7, to: issueDate) ?? issueDate
+        case .net30:
+            return Calendar.current.date(byAdding: .day, value: 30, to: issueDate) ?? issueDate
+        }
+    }
+}
+
+private func normalizedInvoiceNumberPrefix(_ raw: String) -> String {
+    let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if t.isEmpty { return "INV-" }
+    return t.hasSuffix("-") ? t : t + "-"
+}
+
+private func nextSequentialInvoiceNumber(allInvoices: [InvoiceModel]) -> String {
+    let raw = UserDefaults.standard.string(forKey: AppInvoiceDefaults.numberPrefixKey) ?? "INV-"
+    let prefix = normalizedInvoiceNumberPrefix(raw)
+    let maxNumber = allInvoices.compactMap { invoice -> Int? in
+        guard invoice.number.hasPrefix(prefix) else { return nil }
+        let suffix = String(invoice.number.dropFirst(prefix.count))
+        return Int(suffix)
+    }.max() ?? 0
+    return String(format: "%@%04d", prefix, maxNumber + 1)
+}
+
 // MARK: - Create Invoice View
 struct CreateInvoiceView: View {
     @Environment(\.dismiss) var dismiss
@@ -1088,6 +1138,10 @@ struct CreateInvoiceView: View {
     @State private var showDeleteItemAlert = false
     @FocusState private var focusedLineItemTitleId: UUID?
     
+    @AppStorage(AppInvoiceDefaults.currencyKey) private var storedDefaultCurrency = "USD"
+    @AppStorage(AppInvoiceDefaults.taxPercentKey) private var storedDefaultTaxPercent = 0.0
+    @AppStorage(AppInvoiceDefaults.paymentTermsKey) private var storedPaymentTermsRaw = InvoicePaymentTermsSetting.dueOnReceipt.rawValue
+    
     private var activeBusinessProfiles: [BusinessProfileModel] {
         businessProfiles.filter { !$0.isArchived }
     }
@@ -1099,14 +1153,6 @@ struct CreateInvoiceView: View {
     init(template: InvoiceModel? = nil) {
         self.template = template
     }
-    
-    private let currencies: [(code: String, symbol: String)] = [
-        ("USD", "$"),
-        ("EUR", "€"),
-        ("GBP", "£"),
-        ("RUB", "₽"),
-        ("AMD", "֏")
-    ]
     
     private var subtotal: Double {
         guard !lineItems.isEmpty else { return 0 }
@@ -1199,7 +1245,7 @@ struct CreateInvoiceView: View {
                 Section("Invoice Information") {
                     TextField("Invoice Number", text: $invoiceNumber)
                     Picker("Currency", selection: $currencyCode) {
-                        ForEach(currencies, id: \.code) { currency in
+                        ForEach(invoiceCurrencyOptions, id: \.code) { currency in
                             Text("\(currency.code) (\(currency.symbol))").tag(currency.code)
                         }
                     }
@@ -1357,6 +1403,13 @@ struct CreateInvoiceView: View {
                         lineItems = [LineItemData()]
                     }
                 } else {
+                    let allowedCodes = Set(invoiceCurrencyOptions.map(\.code))
+                    let safeCurrency = allowedCodes.contains(storedDefaultCurrency) ? storedDefaultCurrency : "USD"
+                    currencyCode = safeCurrency
+                    let t = storedDefaultTaxPercent
+                    taxPercent = t.isFinite ? max(0, t) : 0
+                    let terms = InvoicePaymentTermsSetting.fromStored(storedPaymentTermsRaw)
+                    dueDate = terms.dueDate(from: issueDate)
                     // Ensure lineItems always has at least one item
                     if lineItems.isEmpty {
                         lineItems = [LineItemData()]
@@ -1406,16 +1459,7 @@ struct CreateInvoiceView: View {
     }
     
     private func generateNextInvoiceNumber() -> String {
-        let maxNumber = allInvoices.compactMap { invoice -> Int? in
-            let components = invoice.number.components(separatedBy: "-")
-            if components.count == 2, let number = Int(components[1]) {
-                return number
-            }
-            return nil
-        }.max() ?? 0
-        
-        let nextNumber = maxNumber + 1
-        return String(format: "INV-%04d", nextNumber)
+        nextSequentialInvoiceNumber(allInvoices: allInvoices)
     }
     
     private func saveInvoice() {
@@ -1569,14 +1613,6 @@ struct EditInvoiceView: View {
         clients.filter { !$0.isArchived }
     }
     
-    private let currencies: [(code: String, symbol: String)] = [
-        ("USD", "$"),
-        ("EUR", "€"),
-        ("GBP", "£"),
-        ("RUB", "₽"),
-        ("AMD", "֏")
-    ]
-    
     private var subtotal: Double {
         lineItems.reduce(0) { $0 + (Double($1.qty) * $1.price) }
     }
@@ -1666,7 +1702,7 @@ struct EditInvoiceView: View {
                 Section("Invoice Information") {
                     TextField("Invoice Number", text: $invoiceNumber)
                     Picker("Currency", selection: $currencyCode) {
-                        ForEach(currencies, id: \.code) { currency in
+                        ForEach(invoiceCurrencyOptions, id: \.code) { currency in
                             Text("\(currency.code) (\(currency.symbol))").tag(currency.code)
                         }
                     }
@@ -5641,6 +5677,22 @@ struct ProfileView: View {
     @AppStorage("appearanceMode") private var appearanceMode = "system"
     @State private var showLogoutAlert = false
     
+    @AppStorage(AppInvoiceDefaults.currencyKey) private var defaultInvoiceCurrency = "USD"
+    @AppStorage(AppInvoiceDefaults.taxPercentKey) private var defaultTaxPercent = 0.0
+    @AppStorage(AppInvoiceDefaults.paymentTermsKey) private var paymentTermsRaw = InvoicePaymentTermsSetting.dueOnReceipt.rawValue
+    @AppStorage(AppInvoiceDefaults.numberPrefixKey) private var invoiceNumberPrefix = "INV-"
+    
+    private var invoiceNumberPrefixBinding: Binding<String> {
+        Binding(
+            get: { invoiceNumberPrefix },
+            set: { newValue in
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                let capped = String(trimmed.prefix(12))
+                invoiceNumberPrefix = capped
+            }
+        )
+    }
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -5648,6 +5700,61 @@ struct ProfileView: View {
                     NavigationLink(destination: MyProfileView()) {
                         Label("My Profile", systemImage: "person.crop.circle")
                     }
+                }
+
+                Section {
+                    Picker(selection: $defaultInvoiceCurrency) {
+                        ForEach(invoiceCurrencyOptions, id: \.code) { currency in
+                            Text("\(currency.code) (\(currency.symbol))").tag(currency.code)
+                        }
+                    } label: {
+                        Label("Default currency", systemImage: "dollarsign.circle")
+                    }
+                    
+                    LabeledContent {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Spacer(minLength: 12)
+                            TextField("0", value: $defaultTaxPercent, format: .number
+                                .precision(.fractionLength(0...4))
+                                .locale(Locale(identifier: "en_US_POSIX")))
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(minWidth: 72)
+                            Text("%")
+                                .foregroundStyle(.secondary)
+                                .font(.subheadline)
+                        }
+                    } label: {
+                        Label("Default tax", systemImage: "percent")
+                    }
+                    
+                    Picker(selection: $paymentTermsRaw) {
+                        ForEach(InvoicePaymentTermsSetting.allCases) { term in
+                            Text(term.title).tag(term.rawValue)
+                        }
+                    } label: {
+                        Label("Payment terms", systemImage: "calendar.badge.clock")
+                    }
+                    
+                    LabeledContent {
+                        HStack {
+                            Spacer(minLength: 12)
+                            TextField("INV-", text: invoiceNumberPrefixBinding)
+                                .multilineTextAlignment(.trailing)
+                                .font(.body)
+                                .fontWeight(.regular)
+                                .foregroundStyle(Color.primary.opacity(0.82))
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                        }
+                    } label: {
+                        Label("Invoice prefix", systemImage: "textformat")
+                    }
+                } header: {
+                    Text("Invoices")
+                } footer: {
+                    Text("Defaults apply to new invoices. You can still change currency, tax, due date, and number on each invoice.")
+                        .font(.footnote)
                 }
 
                 Section("App") {
@@ -5685,6 +5792,7 @@ struct ProfileView: View {
                     }
                 }
             }
+            .listSectionSpacing(20)
             .navigationTitle("Settings")
             .preferredColorScheme(appearanceMode == "system" ? nil : (appearanceMode == "light" ? .light : .dark))
             .alert("Log out", isPresented: $showLogoutAlert) {
