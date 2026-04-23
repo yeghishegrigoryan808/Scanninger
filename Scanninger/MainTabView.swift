@@ -1049,6 +1049,53 @@ private let invoiceCurrencyOptions: [(code: String, symbol: String)] = [
     ("AMD", "֏")
 ]
 
+private let taxPercentInputFormatter: NumberFormatter = {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = 2
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    return formatter
+}()
+
+private func sanitizeTaxPercentInput(_ raw: String, maxFractionDigits: Int = 2) -> String {
+    var result = ""
+    var hasSeparator = false
+    var fractionDigits = 0
+    let safeMax = max(0, maxFractionDigits)
+    
+    for ch in raw {
+        if ch.isNumber {
+            if hasSeparator {
+                guard fractionDigits < safeMax else { continue }
+                fractionDigits += 1
+            }
+            result.append(ch)
+            continue
+        }
+        
+        if (ch == "." || ch == ",") && !hasSeparator {
+            hasSeparator = true
+            if result.isEmpty { result = "0" }
+            result.append(".")
+        }
+    }
+    
+    return result
+}
+
+private func taxPercentValue(from input: String) -> Double {
+    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return 0 }
+    let normalized = trimmed.hasSuffix(".") ? String(trimmed.dropLast()) : trimmed
+    return Double(normalized) ?? 0
+}
+
+private func formattedTaxPercentInput(_ value: Double) -> String {
+    let safeValue = value.isFinite ? max(0, value) : 0
+    return taxPercentInputFormatter.string(from: NSNumber(value: safeValue)) ?? "0"
+}
+
 private enum InvoicePaymentTermsSetting: String, CaseIterable, Identifiable {
     case dueOnReceipt = "due_receipt"
     case net7 = "net7"
@@ -1131,6 +1178,7 @@ struct CreateInvoiceView: View {
     @State private var showPeriodPicker = false
     @State private var lineItems: [LineItemData] = [LineItemData()]
     @State private var taxPercent: Double = 0.0
+    @State private var taxPercentInput = "0"
     @State private var additionalNotes = ""
     @State private var showCreateBusinessProfile = false
     @State private var showCreateClient = false
@@ -1165,6 +1213,17 @@ struct CreateInvoiceView: View {
     
     private var total: Double {
         subtotal + taxAmount
+    }
+    
+    private var taxPercentInputBinding: Binding<String> {
+        Binding(
+            get: { taxPercentInput },
+            set: { newValue in
+                let sanitized = sanitizeTaxPercentInput(newValue)
+                taxPercentInput = sanitized
+                taxPercent = taxPercentValue(from: sanitized)
+            }
+        )
     }
     
     /// Appends without animating list insertion, then performs a single `scrollTo`; focus runs after the scroll animation so the keyboard does not fight the scroll.
@@ -1341,7 +1400,7 @@ struct CreateInvoiceView: View {
                     HStack {
                         Text("Tax %")
                         Spacer()
-                        TextField("0.0", value: $taxPercent, format: .number)
+                        TextField("0", text: taxPercentInputBinding)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
@@ -1386,6 +1445,7 @@ struct CreateInvoiceView: View {
                     periodStart = template.periodStart
                     periodEnd = template.periodEnd
                     taxPercent = template.taxPercent
+                    taxPercentInput = formattedTaxPercentInput(taxPercent)
                     additionalNotes = template.additionalNotes
                     
                     // Copy line items
@@ -1408,6 +1468,7 @@ struct CreateInvoiceView: View {
                     currencyCode = safeCurrency
                     let t = storedDefaultTaxPercent
                     taxPercent = t.isFinite ? max(0, t) : 0
+                    taxPercentInput = formattedTaxPercentInput(taxPercent)
                     let terms = InvoicePaymentTermsSetting.fromStored(storedPaymentTermsRaw)
                     dueDate = terms.dueDate(from: issueDate)
                     // Ensure lineItems always has at least one item
@@ -5681,6 +5742,7 @@ struct ProfileView: View {
     @AppStorage(AppInvoiceDefaults.taxPercentKey) private var defaultTaxPercent = 0.0
     @AppStorage(AppInvoiceDefaults.paymentTermsKey) private var paymentTermsRaw = InvoicePaymentTermsSetting.dueOnReceipt.rawValue
     @AppStorage(AppInvoiceDefaults.numberPrefixKey) private var invoiceNumberPrefix = "INV-"
+    @State private var defaultTaxInput = ""
     
     private var invoiceNumberPrefixBinding: Binding<String> {
         Binding(
@@ -5689,6 +5751,17 @@ struct ProfileView: View {
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 let capped = String(trimmed.prefix(12))
                 invoiceNumberPrefix = capped
+            }
+        )
+    }
+    
+    private var defaultTaxInputBinding: Binding<String> {
+        Binding(
+            get: { defaultTaxInput },
+            set: { newValue in
+                let sanitized = sanitizeTaxPercentInput(newValue)
+                defaultTaxInput = sanitized
+                defaultTaxPercent = taxPercentValue(from: sanitized)
             }
         )
     }
@@ -5714,9 +5787,7 @@ struct ProfileView: View {
                     LabeledContent {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Spacer(minLength: 12)
-                            TextField("0", value: $defaultTaxPercent, format: .number
-                                .precision(.fractionLength(0...4))
-                                .locale(Locale(identifier: "en_US_POSIX")))
+                            TextField("0", text: defaultTaxInputBinding)
                                 .keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
                                 .frame(minWidth: 72)
@@ -5794,6 +5865,15 @@ struct ProfileView: View {
             }
             .listSectionSpacing(20)
             .navigationTitle("Settings")
+            .onAppear {
+                defaultTaxInput = formattedTaxPercentInput(defaultTaxPercent)
+            }
+            .onChange(of: defaultTaxPercent) { _, newValue in
+                let formatted = formattedTaxPercentInput(newValue)
+                if defaultTaxInput != formatted {
+                    defaultTaxInput = formatted
+                }
+            }
             .preferredColorScheme(appearanceMode == "system" ? nil : (appearanceMode == "light" ? .light : .dark))
             .alert("Log out", isPresented: $showLogoutAlert) {
                 Button("Cancel", role: .cancel) { }
